@@ -251,6 +251,10 @@ body {
   --bs-btn-disabled-bg: #FFEADA;
   --bs-btn-disabled-border-color: #FFEADA;
 }
+.banner-ad-1{
+  background-color: #dad6ca;
+}
+
 body {
   letter-spacing: 0.03em;
 }
