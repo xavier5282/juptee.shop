@@ -1,4 +1,5 @@
 const root = document.querySelector('#jt-chat-root');
+const brandImage = window.jupteeAssetUrl ? window.jupteeAssetUrl('/assets/juptee-favicon.png') : '/assets/juptee-favicon.png';
 const state = { open: false, ready: false, loadedAt: 0, loading: false, products: [], settings: null, history: [], pendingOrder: null };
 const sizeDefault = 'M — 38 inches chest\nL — 40 inches chest\nXL — 42 inches chest\nXXL — 44 inches chest\n3XL — 46 inches chest';
 let orderFormSequence = 0;
@@ -25,7 +26,7 @@ function addMessage(role, text, history = true) {
   if (role === 'assistant') {
     const avatar = document.createElement('img');
     avatar.className = 'jt-chat-avatar';
-    avatar.src = '/assets/juptee-favicon.png';
+    avatar.src = brandImage;
     avatar.alt = '';
     row.append(avatar);
   }
@@ -46,7 +47,7 @@ function addHtmlMessage(html) {
   row.className = 'jt-chat-msg assistant';
   const avatar = document.createElement('img');
   avatar.className = 'jt-chat-avatar';
-  avatar.src = '/assets/juptee-favicon.png';
+  avatar.src = brandImage;
   avatar.alt = '';
   const bubble = document.createElement('div');
   bubble.className = 'jt-chat-bubble';
@@ -71,7 +72,7 @@ function showTyping(visible) {
   const row = document.createElement('div');
   row.className = 'jt-chat-msg assistant jt-chat-typing-row';
   row.setAttribute('aria-label', 'Assistant is typing');
-  row.innerHTML = '<img class="jt-chat-avatar" src="/assets/juptee-favicon.png" alt=""><div class="jt-chat-bubble jt-chat-typing"><i></i><i></i><i></i></div>';
+  row.innerHTML = `<img class="jt-chat-avatar" src="${escapeHtml(brandImage)}" alt=""><div class="jt-chat-bubble jt-chat-typing"><i></i><i></i><i></i></div>`;
   root.querySelector('.jt-chat-stream').append(row);
   scrollToBottom();
 }
@@ -81,12 +82,12 @@ function renderWidget() {
     <button class="jt-chat-launch" type="button" aria-label="${state.open ? 'Close' : 'Open'} JUPTEE shopping assistant" aria-expanded="${state.open}">✦</button>
     <section class="jt-chat-panel" role="dialog" aria-modal="false" aria-label="JUPTEE AI shopping assistant" ${state.open ? '' : 'hidden'}>
       <header class="jt-chat-head">
-        <img class="jt-chat-brandmark" src="/assets/juptee-favicon.png" alt="">
+        <img class="jt-chat-brandmark" src="${escapeHtml(brandImage)}" alt="">
         <div class="jt-chat-headcopy"><strong>JUPTEE</strong><span>AI Shopping Assistant</span></div>
         <button class="jt-chat-close" type="button" aria-label="Close chat">×</button>
       </header>
       <div class="jt-chat-stream" role="log" aria-live="polite">
-        <div class="jt-chat-msg assistant"><img class="jt-chat-avatar" src="/assets/juptee-favicon.png" alt=""><div class="jt-chat-bubble jt-chat-welcome">Hey! Welcome to Juptee! 👋 I'm your AI Shopping Assistant. I can help you find products, choose sizes, check prices, calculate delivery charges, and place orders. How can I help you today?</div></div>
+        <div class="jt-chat-msg assistant"><img class="jt-chat-avatar" src="${escapeHtml(brandImage)}" alt=""><div class="jt-chat-bubble jt-chat-welcome">Hey! Welcome to Juptee! 👋 I'm your AI Shopping Assistant. I can help you find products, choose sizes, check prices, calculate delivery charges, and place orders. How can I help you today?</div></div>
         <div class="jt-chat-quick">
           <button type="button" data-action="browse">🛍️ Browse Products</button>
           <button type="button" data-action="size">📏 Size Guide</button>
@@ -214,7 +215,9 @@ function showCatalog(language = 'en') {
     const priceText = minPrice === null
       ? language === 'bn' ? 'কোনো স্টকে থাকা ভ্যারিয়েন্ট নেই' : language === 'banglish' ? 'Stock-e variant nei' : 'No available variants'
       : `${language === 'bn' ? 'শুরু' : language === 'banglish' ? 'Shuru' : 'From'} ${money(minPrice)}`;
-    return `<article class="jt-chat-product"><img src="${escapeHtml(product.images?.[0] || '/assets/juptee-favicon.png')}" alt="" onerror="this.onerror=null;this.src='/assets/juptee-favicon.png'"><div><strong>${escapeHtml(product.name)}</strong><span>${escapeHtml(priceText)} · ${escapeHtml(stockText)}</span></div></article>`;
+    const image = product.images?.[0] || '/assets/juptee-favicon.png';
+    const imageUrl = window.jupteeAssetUrl ? window.jupteeAssetUrl(image) : image;
+    return `<article class="jt-chat-product"><img src="${escapeHtml(imageUrl)}" alt="" onerror="this.onerror=null;this.src='${escapeHtml(brandImage)}'"><div><strong>${escapeHtml(product.name)}</strong><span>${escapeHtml(priceText)} · ${escapeHtml(stockText)}</span></div></article>`;
   }).join('');
   const title = language === 'bn' ? 'প্রকাশিত পণ্য ও বর্তমান দাম' : language === 'banglish' ? 'Published product ar current price' : 'Published products &amp; current prices';
   const promotion = state.settings?.promotions

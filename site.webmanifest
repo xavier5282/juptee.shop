@@ -2,14 +2,14 @@
   "name": "JUPTEE",
   "short_name": "JUPTEE",
   "description": "Explore JUPTEE T-shirts, hoodies and accessories.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f8f7f4",
   "theme_color": "#f8f7f4",
   "icons": [
     {
-      "src": "/assets/juptee-favicon.png",
+      "src": "assets/juptee-favicon.png",
       "sizes": "64x64",
       "type": "image/png",
       "purpose": "any"
