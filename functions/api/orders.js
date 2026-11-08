@@ -1,5 +1,6 @@
 import { errorResponse, json } from '../_lib/http.js';
 import { dispatchOrderNotifications } from '../_lib/notifications.js';
+import { bangladeshLocations } from '../_lib/bangladesh-locations.js';
 import { getChatSettings } from '../_lib/shop-config.js';
 
 const MAX_DISTINCT_ITEMS = 8;
@@ -28,8 +29,29 @@ async function settingsFromDb(db) {
 }
 
 async function existingOrder(db, key) {
-  return db.prepare('SELECT id, total_amount, request_fingerprint FROM orders WHERE idempotency_key = ?')
+  return db.prepare(
+    `SELECT id, total_amount, request_fingerprint, customer_phone, division_name,
+      district_name, upazila_name, full_address
+     FROM orders WHERE idempotency_key = ?`
+  )
     .bind(key).first();
+}
+
+function positiveId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : 0;
+}
+
+function orderConfirmation(order) {
+  return {
+    orderId: order.id,
+    total: order.total_amount,
+    phone: order.customer_phone,
+    division: order.division_name || '',
+    district: order.district_name || order.district_area,
+    upazila: order.upazila_name || '',
+    address: order.full_address
+  };
 }
 
 export async function onRequestPost(context) {
@@ -60,19 +82,38 @@ export async function onRequestPost(context) {
   const requestFingerprint = Array.from(
     new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawBody)))
   ).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  try {
+    const prior = await existingOrder(env.DB, idempotencyKey);
+    if (prior) {
+      if (prior.request_fingerprint !== requestFingerprint) {
+        return errorResponse('This submission key was already used for different order details. Please submit again.', 409);
+      }
+      return json({ ...orderConfirmation(prior), notifications: 'already submitted' }, 200);
+    }
+  } catch (error) {
+    console.error('Could not check the JUPTEE order submission key:', error);
+    return errorResponse('We could not verify this order submission. Please retry safely.', 503);
+  }
 
   const name = clean(body.name, 120);
   const phone = normalizedPhone(body.phone);
   const email = clean(body.email, 254).toLowerCase();
-  const district = clean(body.district, 120);
-  const address = clean(body.address, 500);
+  const divisionId = positiveId(body.divisionId);
+  const districtId = positiveId(body.districtId);
+  const upazilaId = positiveId(body.upazilaId);
+  const houseAddress = clean(body.houseAddress, 240);
+  const localAddress = clean(body.localAddress, 240);
+  const address = [houseAddress, localAddress].filter(Boolean).join(', ');
+  const instructions = clean(body.deliveryInstructions, 500);
   const notes = clean(body.notes, 500);
-  const area = clean(body.deliveryArea, 20);
   const items = body.items;
-  if (!name || !phone || !district || !address || !validEmail(email)) {
-    return errorResponse('Check your name, Bangladeshi phone number, email, district, and delivery address.', 400);
+  const division = bangladeshLocations.find(item => item.id === divisionId);
+  const district = division?.districts.find(item => item.id === districtId);
+  const upazila = district?.upazilas.find(item => item.id === upazilaId);
+  if (!name || !phone || !division || !district || !upazila || !houseAddress || !localAddress || !validEmail(email)) {
+    return errorResponse('Choose a valid division, district, and police station/upazila, and check your name, Bangladeshi phone number, and delivery address.', 400);
   }
-  if (!Object.hasOwn(DELIVERY_FEES, area)) return errorResponse('Choose a valid delivery area.', 400);
+  const area = district.name.toLocaleLowerCase() === 'dhaka' ? 'dhaka' : 'out';
   if (!Array.isArray(items) || items.length === 0 || items.length > MAX_DISTINCT_ITEMS) {
     return errorResponse(`An order must contain between 1 and ${MAX_DISTINCT_ITEMS} different items.`, 400);
   }
@@ -91,14 +132,6 @@ export async function onRequestPost(context) {
   }
 
   try {
-    const prior = await existingOrder(env.DB, idempotencyKey);
-    if (prior) {
-      if (prior.request_fingerprint !== requestFingerprint) {
-        return errorResponse('This submission key was already used for different order details. Please submit again.', 409);
-      }
-      return json({ orderId: prior.id, total: prior.total_amount, notifications: 'already submitted' }, 200);
-    }
-
     const placeholders = normalizedItems.map(() => '?').join(',');
     const catalog = await env.DB.prepare(
       `SELECT id, title, category, color, size, unit_price, stock
@@ -139,10 +172,14 @@ export async function onRequestPost(context) {
       customer_name: name,
       customer_phone: phone,
       customer_email: email,
-      district_area: district,
+      division_name: division.name,
+      district_name: district.name,
+      upazila_name: upazila.name,
+      district_area: `${district.name}, ${upazila.name}`,
       full_address: address,
+      delivery_instructions: instructions,
       order_notes: notes,
-      delivery_area: area === 'dhaka' ? 'Dhaka' : area === 'subcity' ? 'Sub-City' : 'Outside City',
+      delivery_area: area === 'dhaka' ? 'Dhaka' : 'Outside Dhaka',
       delivery_charge: deliveryCharge,
       subtotal,
       discount_amount: discount,
@@ -156,12 +193,14 @@ export async function onRequestPost(context) {
       env.DB.prepare(
         `INSERT INTO orders (
           id, idempotency_key, request_fingerprint, customer_name, customer_phone, customer_email,
-          district_area, full_address, order_notes, delivery_area, delivery_charge,
+          division_name, district_name, upazila_name, district_area, full_address,
+          delivery_instructions, order_notes, delivery_area, delivery_charge,
           subtotal, discount_amount, total_amount, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         order.id, idempotencyKey, requestFingerprint, order.customer_name, order.customer_phone,
-        order.customer_email, order.district_area, order.full_address, order.order_notes,
+        order.customer_email, order.division_name, order.district_name, order.upazila_name,
+        order.district_area, order.full_address, order.delivery_instructions, order.order_notes,
         order.delivery_area, order.delivery_charge, order.subtotal, order.discount_amount,
         order.total_amount, order.created_at
       ),
@@ -185,8 +224,7 @@ export async function onRequestPost(context) {
     }
     await dispatchOrderNotifications(context, order, settings, env);
     return json({
-      orderId: order.id,
-      total: order.total_amount,
+      ...orderConfirmation(order),
       notifications: { whatsapp: 'queued', email: 'queued' }
     }, 201);
   } catch (error) {

@@ -7,8 +7,11 @@ function formatOrder(order) {
     `Phone: ${order.customer_phone}`,
     `Email: ${order.customer_email || 'Not provided'}`,
     `Delivery area: ${order.delivery_area}`,
-    `District/area: ${order.district_area}`,
+    `Division: ${order.division_name || 'Not recorded'}`,
+    `District: ${order.district_name || order.district_area}`,
+    `Police station / Upazila: ${order.upazila_name || 'Not recorded'}`,
     `Address: ${order.full_address}`,
+    `Delivery instructions: ${order.delivery_instructions || 'None'}`,
     'Items:'
   ];
   for (const item of order.items) {
@@ -98,13 +101,19 @@ async function sendEmail(order, settings, env) {
     <td style="padding:8px;border-bottom:1px solid #e5e5e5">${item.quantity}</td>
     <td style="padding:8px;border-bottom:1px solid #e5e5e5">৳${item.line_total.toLocaleString('en-US')}</td>
   </tr>`).join('');
-  const address = [order.district_area, order.full_address].map(escapeHtml).join('<br>');
+  const address = [
+    order.division_name,
+    order.district_name || order.district_area,
+    order.upazila_name,
+    order.full_address
+  ].filter(Boolean).map(escapeHtml).join('<br>');
   const html = `<div style="font:15px/1.6 Arial,sans-serif;color:#242424;max-width:680px;margin:auto">
     <h1>New JUPTEE order ${escapeHtml(order.id)}</h1>
     <p><a href="${escapeHtml(order.admin_url)}">Manage this order in the admin dashboard</a></p>
     <h2>Customer</h2>
     <p>${escapeHtml(order.customer_name)}<br>${escapeHtml(order.customer_phone)}<br>${escapeHtml(order.customer_email || 'Email not provided')}</p>
     <h2>Delivery</h2><p>${escapeHtml(order.delivery_area)}<br>${address}</p>
+    <p>Delivery instructions: ${escapeHtml(order.delivery_instructions || 'None')}</p>
     <h2>Items</h2>
     <table style="width:100%;border-collapse:collapse;text-align:left">
       <thead><tr><th style="padding:8px">Product / variation</th><th style="padding:8px">Qty</th><th style="padding:8px">Line total</th></tr></thead>

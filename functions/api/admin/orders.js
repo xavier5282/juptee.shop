@@ -5,9 +5,10 @@ const STATUSES = new Set(['new', 'confirmed', 'processing', 'shipped', 'complete
 export async function onRequestGet({ env }) {
   try {
     const result = await env.DB.prepare(
-      `SELECT id, customer_name, customer_phone, customer_email, district_area,
-        full_address, order_notes, delivery_area, delivery_charge, subtotal,
-        discount_amount, total_amount, status, whatsapp_status, whatsapp_error,
+      `SELECT id, customer_name, customer_phone, customer_email, division_name,
+        district_name, upazila_name, district_area, full_address, delivery_instructions,
+        order_notes, delivery_area, delivery_charge, subtotal, discount_amount, total_amount,
+        status, whatsapp_status, whatsapp_error,
         email_status, email_error, created_at
        FROM orders ORDER BY created_at DESC LIMIT 100`
     ).all();

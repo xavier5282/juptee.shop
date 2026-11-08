@@ -83,7 +83,19 @@ Optionally set `OPENAI_MODEL` as a Pages environment variable (default: `gpt-4o-
 
 The assistant's order form submits to the existing `/api/orders` endpoint. The AI provider does not receive order form fields; email addresses and phone numbers in chat text are redacted before an AI request, but customers should still avoid typing private details into free-form chat. The assistant confirms an order only after the existing order API returns a saved order ID.
 
-The protected dashboard's **Store & assistant settings** panel configures Dhaka, sub-city and outside-city delivery charges, the garment size chart, current promotion information, FAQs and human support phone. These values use the existing D1 `notification_settings` table, so no additional migration is needed. Promotion text is informational only: the existing order service has no coupon/discount calculation and saves a zero discount. The existing payment method is cash on delivery only; payment methods cannot be enabled from the chatbot settings. Product names, prices, variants and stock continue to come from the published D1 catalog.
+The protected dashboard's **Store & assistant settings** panel configures Dhaka and outside-city delivery charges, the legacy sub-city fee, garment size chart, current promotion information, FAQs and human support phone. These values use the existing D1 `notification_settings` table, so no additional migration is needed. Promotion text is informational only: the existing order service has no coupon/discount calculation and saves a zero discount. The existing payment method is cash on delivery only; payment methods cannot be enabled from the chatbot settings. Product names, prices, variants and stock continue to come from the published D1 catalog.
+
+### Bangladesh checkout locations
+
+The checkout and chatbot order form use the bundled bilingual Bangladesh Locations Dataset (`functions/_lib/bangladesh-locations.js`), derived from [HedaetShahriar/bangladesh-locations-dataset](https://github.com/HedaetShahriar/bangladesh-locations-dataset) v1.5.0 at revision `0d3116a7f59be5b2450742432805df2ab505043e`. This snapshot contains all 8 divisions, 64 districts, 502 upazilas, and 74 thanas. It is served by the same-origin `/api/locations` endpoint and does not rely on a third-party runtime service. The dataset is MIT-licensed; see `assets/data/LICENSE-bangladesh-locations.txt`. Its maintainers note that the public-source dataset is not an official government publication and may contain name or spelling errors; verify customer-facing labels before launch.
+
+Apply the pending schema migration to each existing D1 database before deploying this version:
+
+```powershell
+npx wrangler d1 migrations apply juptee-orders --remote
+```
+
+Migration `0003_order_locations.sql` adds division, district, upazila/thana, and delivery-instruction fields while preserving prior orders. New checkout submissions send location IDs; the order API verifies that the district belongs to the selected division and the upazila/thana belongs to that district, then saves canonical location names. The server applies the configured Dhaka fee to orders in Dhaka district and the configured outside fee to every other district. The former sub-city fee setting remains in the admin form for compatibility but is not used by checkout. Admin orders, business notifications, and the customer confirmation display the saved location and address.
 
 The middleware verifies the Access JWT signature, issuer, audience, and expiry before serving `/admin` or the admin APIs. Test that an unauthenticated request to both `/admin/` and `/api/admin/orders` is rejected before sharing the dashboard URL.
 
@@ -138,7 +150,9 @@ Before using production customer data:
 9. Configure chat delivery fees, size chart, FAQs, promotions, and support number in the admin panel. Confirm storefront checkout, chatbot delivery estimates, and the order API all use the same configured fee.
 10. Set the OpenAI secret in staging, then test English, Bangla, and Banglish questions about published products, unavailable items, current prices, offers, sizes, and FAQs. Confirm missing AI configuration produces an explicit unavailable message while catalog actions and order flow still work.
 11. Test the order assistant: submit valid details, edit/cancel the summary, confirm a successful order and order ID, then simulate an API/network failure and retry. Confirm no success message is shown before the backend saves the order, duplicate retries do not decrement stock twice, and personal order fields are not sent to the AI provider.
-12. Check the widget at narrow mobile viewport sizes, including open/close, keyboard scrolling, typing feedback, and order review. Verify checkout, bag, order history and the admin orders panel still work.
-13. Verify the customer-facing phone, delivery, returns, privacy, and terms information before accepting real orders.
+12. Test the location selector: check all 8 divisions, all 64 districts, and the upazila/thana list for each district; search in English and Bangla; verify changing a division clears district and thana, and changing a district clears thana. Confirm an incomplete location is blocked in the browser and invalid or mismatched location IDs are rejected by the order API.
+13. Submit a test order from Dhaka district and one from another district; verify the server-applied fees (default ৳80 and ৳130), saved division/district/thana, both address lines, phone, and delivery instructions in D1, admin, notifications, and customer confirmation. Confirm older orders still display their stored legacy address.
+14. Check the widget and checkout at narrow mobile viewport sizes, including open/close, keyboard scrolling, search, typing feedback, and order review. Verify checkout, bag, order history and the admin orders panel still work.
+15. Verify the customer-facing phone, delivery, returns, privacy, and terms information before accepting real orders.
 
 The order endpoint uses cash on delivery and currently has no coupon or discount system, so the saved discount is zero. Do not remove the storefront `noindex` setting or publish sample catalogue claims until launch information and inventory are verified.

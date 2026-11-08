@@ -1,6 +1,7 @@
 const root = document.querySelector('#jt-chat-root');
 const state = { open: false, ready: false, loadedAt: 0, loading: false, products: [], settings: null, history: [], pendingOrder: null };
 const sizeDefault = 'M — 38 inches chest\nL — 40 inches chest\nXL — 42 inches chest\nXXL — 44 inches chest\n3XL — 46 inches chest';
+let orderFormSequence = 0;
 
 function messageLanguage(value) {
   if (/[\u0980-\u09FF]/.test(value)) return 'bn';
@@ -176,7 +177,6 @@ function quickAction(event) {
     return;
   }
   if (action === 'delivery') {
-    const fees = configuredFees();
     addMessage('user', 'How much is delivery?', false);
     addDeliveryReply('en');
     return;
@@ -190,11 +190,11 @@ function quickAction(event) {
 function addDeliveryReply(language) {
   const fees = configuredFees();
   if (language === 'bn') {
-    addMessage('assistant', `বর্তমান ডেলিভারি চার্জ:\n• ঢাকার মধ্যে: ${money(fees.dhaka)}\n• সাব-সিটি: ${money(fees.subcity)}\n• ঢাকার বাইরে: ${money(fees.out)}\n\nচেকআউটে পণ্যের সাবটোটালের সঙ্গে ডেলিভারি যোগ হবে।`);
+    addMessage('assistant', `বর্তমান ডেলিভারি চার্জ:\n• ঢাকা জেলায়: ${money(fees.dhaka)}\n• ঢাকার বাইরে: ${money(fees.out)}\n\nচেকআউটে পণ্যের সাবটোটালের সঙ্গে ডেলিভারি যোগ হবে।`);
   } else if (language === 'banglish') {
-    addMessage('assistant', `Ekhon delivery charge:\n• Dhakar moddhe: ${money(fees.dhaka)}\n• Sub-city: ${money(fees.subcity)}\n• Dhakar baire: ${money(fees.out)}\n\nCheckout-e product subtotal-er sathe delivery jog hobe.`);
+    addMessage('assistant', `Ekhon delivery charge:\n• Dhaka district-e: ${money(fees.dhaka)}\n• Dhakar baire: ${money(fees.out)}\n\nCheckout-e product subtotal-er sathe delivery jog hobe.`);
   } else {
-    addMessage('assistant', `Current delivery charges:\n• Inside Dhaka: ${money(fees.dhaka)}\n• Sub-city: ${money(fees.subcity)}\n• Outside city: ${money(fees.out)}\n\nDelivery is added to the product subtotal at checkout.`);
+    addMessage('assistant', `Current delivery charges:\n• Dhaka district: ${money(fees.dhaka)}\n• Outside Dhaka: ${money(fees.out)}\n\nDelivery is added to the product subtotal at checkout.`);
   }
 }
 
@@ -280,9 +280,9 @@ function startOrder(prefill = {}) {
   }
   state.pendingOrder = null;
   const productOptions = availableProducts.map(product => `<option value="${escapeHtml(product.id)}" ${product.id === prefill.product?.id ? 'selected' : ''}>${escapeHtml(product.name)}</option>`).join('');
-  const fees = configuredFees();
-  const row = document.createElement('div');
+  const row = document.createElement('form');
   row.className = 'jt-chat-order';
+  row.addEventListener('submit', event => event.preventDefault());
   row.innerHTML = `
     <label>Product<select name="product">${productOptions}</select></label>
     <label>Color / size<select name="variant"></select></label>
@@ -290,12 +290,16 @@ function startOrder(prefill = {}) {
     <label>Your name<input name="name" maxlength="120" autocomplete="name" value="${escapeHtml(prefill.name || '')}" required></label>
     <label>Mobile number<input name="phone" type="tel" inputmode="tel" placeholder="01XXXXXXXXX" autocomplete="tel" value="${escapeHtml(prefill.phone || '')}" required></label>
     <label>Email (optional)<input name="email" type="email" maxlength="254" autocomplete="email" value="${escapeHtml(prefill.email || '')}"></label>
-    <label>Delivery area<select name="deliveryArea"><option value="dhaka" ${!prefill.deliveryArea || prefill.deliveryArea === 'dhaka' ? 'selected' : ''}>Inside Dhaka — ${money(fees.dhaka)}</option><option value="subcity" ${prefill.deliveryArea === 'subcity' ? 'selected' : ''}>Sub-city — ${money(fees.subcity)}</option><option value="out" ${prefill.deliveryArea === 'out' ? 'selected' : ''}>Outside city — ${money(fees.out)}</option></select></label>
-    <label>District / area<input name="district" maxlength="120" autocomplete="address-level2" value="${escapeHtml(prefill.district || '')}" required></label>
-    <label>Full delivery address<textarea name="address" rows="2" maxlength="500" autocomplete="street-address" required>${escapeHtml(prefill.address || '')}</textarea></label>
+    ${window.locationSelectorMarkup(`chat-order-locations-${++orderFormSequence}`, prefill)}
+    <label>House / Building / Road<input name="houseAddress" maxlength="240" autocomplete="address-line1" value="${escapeHtml(prefill.houseAddress || '')}" required></label>
+    <label>Area / Village / Local Address<input name="localAddress" maxlength="240" autocomplete="address-line2" value="${escapeHtml(prefill.localAddress || '')}" required></label>
+    <label>Delivery instructions (optional)<textarea name="deliveryInstructions" rows="2" maxlength="500">${escapeHtml(prefill.deliveryInstructions || '')}</textarea></label>
+    <label>Order notes (optional)<textarea name="notes" rows="2" maxlength="500">${escapeHtml(prefill.notes || '')}</textarea></label>
     <div><small>Payment: Cash on delivery</small></div>
     <div class="jt-chat-order-actions"><button type="button" data-order-preview>Review order</button><button type="button" class="secondary" data-order-cancel>Cancel</button></div>`;
   root.querySelector('.jt-chat-stream').append(row);
+  const locationFields = row.querySelector('[data-location-selector]');
+  window.initializeLocationSelectors(locationFields);
   const productSelect = row.querySelector('[name="product"]');
   productSelect.addEventListener('change', () => updateVariants(row));
   updateVariants(row);
@@ -337,6 +341,14 @@ function orderAction(event) {
       form.elements.phone.setCustomValidity('');
       return;
     }
+    const locationFields = form.querySelector('[data-location-selector]');
+    const division = locationFields.locationData?.find(item => String(item.id) === form.elements.division.value);
+    const district = division?.districts.find(item => String(item.id) === form.elements.district.value);
+    const upazila = district?.upazilas.find(item => String(item.id) === form.elements.upazila.value);
+    if (!division || !district || !upazila) {
+      addMessage('assistant', 'Please select a valid division, district, and police station / upazila before reviewing your order.');
+      return;
+    }
     const details = {
       product,
       variant,
@@ -344,9 +356,18 @@ function orderAction(event) {
       name: form.elements.name.value.trim(),
       phone: form.elements.phone.value.trim(),
       email: form.elements.email.value.trim(),
-      deliveryArea: form.elements.deliveryArea.value,
-      district: form.elements.district.value.trim(),
-      address: form.elements.address.value.trim()
+      divisionId: String(division.id),
+      districtId: String(district.id),
+      upazilaId: String(upazila.id),
+      division: division.name,
+      district: district.name,
+      upazila: upazila.name,
+      deliveryArea: district.name.toLocaleLowerCase() === 'dhaka' ? 'dhaka' : 'out',
+      houseAddress: form.elements.houseAddress.value.trim(),
+      localAddress: form.elements.localAddress.value.trim(),
+      address: [form.elements.houseAddress.value.trim(), form.elements.localAddress.value.trim()].join(', '),
+      deliveryInstructions: form.elements.deliveryInstructions.value.trim(),
+      notes: form.elements.notes.value.trim()
     };
     const delivery = configuredFees()[details.deliveryArea];
     const subtotal = variant.unitPrice * quantity;
@@ -362,7 +383,11 @@ function orderAction(event) {
       <p><b>Estimated total: ${money(subtotal + delivery)}</b></p>
       <p>Customer: ${escapeHtml(details.name)}</p>
       <p>Phone: ${escapeHtml(details.phone)}</p>
-      <p>Address: ${escapeHtml(details.district)}, ${escapeHtml(details.address)}</p>
+      <p>Division: ${escapeHtml(details.division)}</p>
+      <p>District: ${escapeHtml(details.district)}</p>
+      <p>Police station / Upazila: ${escapeHtml(details.upazila)}</p>
+      <p>Address: ${escapeHtml(details.address)}</p>
+      <p>Delivery instructions: ${escapeHtml(details.deliveryInstructions || 'None')}</p>
       <p>Payment: Cash on delivery</p>
       <p>Would you like to confirm this order?</p>
       <div class="jt-chat-order-actions"><button type="button" data-order-confirm>Confirm order</button><button type="button" class="secondary" data-order-edit>Edit</button><button type="button" class="secondary" data-order-cancel>Cancel</button></div>`;
@@ -394,10 +419,13 @@ async function submitOrder(button) {
         name: details.name,
         phone,
         email: details.email,
-        district: details.district,
-        address: details.address,
-        notes: '',
-        deliveryArea: details.deliveryArea,
+        divisionId: details.divisionId,
+        districtId: details.districtId,
+        upazilaId: details.upazilaId,
+        houseAddress: details.houseAddress,
+        localAddress: details.localAddress,
+        deliveryInstructions: details.deliveryInstructions,
+        notes: details.notes,
         items: [{ variantId: details.variant.id, quantity: details.quantity }]
       })
     };
@@ -417,7 +445,7 @@ async function submitOrder(button) {
     if (!response.ok) throw new Error(result.error || 'We could not save the order. Please retry.');
     if (typeof result.orderId !== 'string' || !result.orderId || !Number.isSafeInteger(result.total)) throw new Error('The server did not return a complete order confirmation. Retry safely or contact JUPTEE.');
     const review = button.closest('.jt-chat-review');
-    review.innerHTML = `<p><strong>🎉 Thank you for shopping with Juptee!</strong></p><p>Your order has been successfully received. Your Order ID is:</p><p><b>${escapeHtml(result.orderId)}</b></p><p>Final payable: <b>${money(result.total)}</b></p><p>Our team will contact you shortly.</p>`;
+    review.innerHTML = `<p><strong>🎉 Thank you for shopping with Juptee!</strong></p><p>Your order has been successfully received. Your Order ID is:</p><p><b>${escapeHtml(result.orderId)}</b></p><p>Final payable: <b>${money(result.total)}</b></p><p>Delivery: ${escapeHtml([result.division, result.district, result.upazila, result.address].filter(Boolean).join(' · '))}</p><p>Phone: ${escapeHtml(result.phone || '')}</p><p>Our team will contact you shortly.</p>`;
     state.pendingOrder = null;
     state.products = [];
     state.ready = false;

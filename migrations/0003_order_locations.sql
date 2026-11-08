@@ -1,0 +1,4 @@
+ALTER TABLE orders ADD COLUMN division_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN district_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN upazila_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN delivery_instructions TEXT NOT NULL DEFAULT '';
