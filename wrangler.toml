@@ -1,0 +1,16 @@
+name = "juptee-store"
+pages_build_output_dir = "."
+compatibility_date = "2026-11-07"
+
+[vars]
+PUBLIC_SITE_URL = "https://jupbd.shop"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "juptee-orders"
+database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "PRODUCT_IMAGES"
+bucket_name = "juptee-product-images"
