@@ -12,6 +12,8 @@ const imageLabels = ['Front', 'Back', 'Side', 'Detail'];
 let products = [];
 let currentImages = [];
 let selectedFiles = [];
+let imagePaths = [];
+let previewUrls = [];
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -41,7 +43,7 @@ function productCard(product) {
   const variants = product.variants || [];
   const stock = variants.reduce((total, variant) => total + Number(variant.stock || 0), 0);
   return `<article class="product-admin-card">
-    <img src="${escapeHtml(image)}" alt="" loading="lazy">
+    <img src="${escapeHtml(image)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='/assets/juptee-favicon.png'">
     <div><strong>${escapeHtml(product.title)}</strong><p>${escapeHtml(product.id)} · ${money(product.salePrice || product.price)}</p><p>${product.active ? 'Published' : 'Draft'} · ${variants.length} variations · ${stock} stock</p></div>
     <button class="btn alt" type="button" data-edit-product="${escapeHtml(product.id)}">Edit</button>
   </article>`;
@@ -63,12 +65,86 @@ async function loadProducts() {
 function renderImageSlots() {
   imageSlots.innerHTML = imageLabels.map((label, index) => {
     const image = currentImages[index];
-    return `<label class="image-slot">${escapeHtml(label)} photo
-      <img src="${escapeHtml(image?.url || '')}" alt="${escapeHtml(image ? `${label} product photo` : `Preview for ${label} photo`)}" data-image-preview="${index}">
-      <input type="file" name="image${index}" accept="image/jpeg,image/png,image/webp" data-image-file="${index}">
-      <span class="hint">${image ? 'Current photo kept unless replaced.' : 'No photo uploaded yet.'}</span>
-    </label>`;
+    const path = imagePaths[index] || (image?.source === 'local' ? image.ref : '');
+    const preview = previewUrls[index] || image?.url || '';
+    const status = selectedFiles[index]
+      ? `${selectedFiles[index].name} · ready to upload.`
+      : image ? (image.source === 'local' ? 'Repository image kept.' : 'Current image kept unless replaced.') : 'No image selected.';
+    return `<div class="image-slot" data-image-drop="${index}">
+      <strong>${escapeHtml(label)} photo${index === 0 ? ' · Primary' : ''}</strong>
+      <img src="${escapeHtml(preview)}" alt="${escapeHtml(image ? `${label} product photo` : `Preview for ${label} photo`)}" data-image-preview="${index}" onerror="this.onerror=null;this.src='/assets/juptee-favicon.png'">
+      <label>Upload image <input type="file" accept="image/jpeg,image/png,image/webp" data-image-file="${index}"></label>
+      <label>Repository image path
+        <input type="text" data-image-path="${index}" value="${escapeHtml(path)}" placeholder="/assets/products/product-name.webp">
+      </label>
+      <div class="image-slot-controls">
+        <button class="btn alt" type="button" data-primary-image="${index}" ${index === 0 ? 'disabled' : ''}>${index === 0 ? 'Primary image' : 'Set as primary'}</button>
+        <button class="btn alt" type="button" data-remove-image="${index}">Remove</button>
+      </div>
+      <span class="hint">${escapeHtml(status)} Drop an image here to replace.</span>
+    </div>`;
   }).join('');
+}
+
+function clearPreviewUrls() {
+  previewUrls.forEach(url => { if (url) URL.revokeObjectURL(url); });
+  previewUrls = [];
+}
+
+function imageFileError(file) {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!file || (file.type && !allowedTypes.includes(file.type.toLowerCase()))) {
+    return 'Use a JPG, PNG, or WebP image.';
+  }
+  if (file.size < 1 || file.size > 6 * 1024 * 1024) return 'Each image must be smaller than 6 MB.';
+  return '';
+}
+
+function setImageFile(index, file) {
+  const error = imageFileError(file);
+  if (error) {
+    productsFeedback.textContent = error;
+    productsFeedback.className = 'admin-feedback error';
+    return false;
+  }
+  if (previewUrls[index]) URL.revokeObjectURL(previewUrls[index]);
+  selectedFiles[index] = file;
+  imagePaths[index] = '';
+  previewUrls[index] = URL.createObjectURL(file);
+  const pathInput = imageSlots.querySelector(`[data-image-path="${index}"]`);
+  if (pathInput) pathInput.value = '';
+  const preview = imageSlots.querySelector(`[data-image-preview="${index}"]`);
+  if (preview) preview.src = previewUrls[index];
+  const hint = imageSlots.querySelector(`[data-image-drop="${index}"] .hint`);
+  if (hint) hint.textContent = `${file.name} · ready to upload. Drop another image here to replace.`;
+  productsFeedback.textContent = '';
+  productsFeedback.className = 'admin-feedback';
+  return true;
+}
+
+function uploadProductImages(formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', '/api/admin/product-images');
+    request.withCredentials = true;
+    request.upload.addEventListener('progress', event => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    });
+    request.addEventListener('load', () => {
+      let result = {};
+      try {
+        result = JSON.parse(request.responseText);
+      } catch {
+        reject(new Error('The image upload returned an invalid response.'));
+        return;
+      }
+      if (request.status >= 200 && request.status < 300) resolve(result);
+      else reject(new Error(result.error || `Image upload failed (${request.status}).`));
+    });
+    request.addEventListener('error', () => reject(new Error('The image upload could not reach the server.')));
+    request.addEventListener('abort', () => reject(new Error('The image upload was cancelled.')));
+    request.send(formData);
+  });
 }
 
 function readColorsAndSizes() {
@@ -96,15 +172,18 @@ function buildVariantRows(previous = []) {
 }
 
 function resetProductEditor() {
+  clearPreviewUrls();
   productForm.reset();
   productForm.hidden = true;
   currentImages = [];
   selectedFiles = [];
+  imagePaths = [];
   productsFeedback.textContent = '';
   productsFeedback.className = 'admin-feedback';
 }
 
 function createProduct() {
+  clearPreviewUrls();
   productForm.reset();
   productForm.hidden = false;
   productForm.elements.id.value = `JUP-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
@@ -115,6 +194,8 @@ function createProduct() {
   productForm.elements.active.checked = false;
   currentImages = [];
   selectedFiles = [];
+  imagePaths = [];
+  $('#bulk-images').value = '';
   $('#product-form-title').textContent = 'Add a product';
   productsFeedback.textContent = '';
   productsFeedback.className = 'admin-feedback';
@@ -124,6 +205,7 @@ function createProduct() {
 }
 
 function editProduct(product) {
+  clearPreviewUrls();
   productForm.reset();
   productForm.hidden = false;
   productForm.elements.id.value = product.id;
@@ -139,6 +221,8 @@ function editProduct(product) {
   productForm.elements.active.checked = product.active;
   currentImages = (product.images || []).map(image => ({ ...image }));
   selectedFiles = [];
+  imagePaths = currentImages.map(image => image?.source === 'local' ? image.ref : '');
+  $('#bulk-images').value = '';
   $('#product-form-title').textContent = `Edit ${product.title}`;
   productsFeedback.textContent = '';
   productsFeedback.className = 'admin-feedback';
@@ -205,8 +289,16 @@ async function loadSettings() {
   settingsFeedback.textContent = '';
   try {
     const settings = await api('/api/admin/settings');
-    $('#settings-form').elements.whatsapp_recipient.value = settings.whatsapp_recipient || '';
-    $('#settings-form').elements.notification_email.value = settings.notification_email || '';
+    const form = $('#settings-form');
+    form.elements.whatsapp_recipient.value = settings.whatsapp_recipient || '';
+    form.elements.notification_email.value = settings.notification_email || '';
+    form.elements.chat_delivery_dhaka.value = settings.chat_delivery_dhaka;
+    form.elements.chat_delivery_subcity.value = settings.chat_delivery_subcity;
+    form.elements.chat_delivery_out.value = settings.chat_delivery_out;
+    form.elements.chat_support_phone.value = settings.chat_support_phone || '';
+    form.elements.chat_size_chart.value = settings.chat_size_chart || '';
+    form.elements.chat_promotions.value = settings.chat_promotions || '';
+    form.elements.chat_faqs.value = settings.chat_faqs || '';
   } catch (error) {
     settingsFeedback.textContent = error.message;
     settingsFeedback.className = 'admin-feedback error';
@@ -255,23 +347,91 @@ productList.addEventListener('click', event => {
 });
 
 imageSlots.addEventListener('change', event => {
-  const input = event.target.closest('[data-image-file]');
-  if (!input) return;
-  const index = Number(input.dataset.imageFile);
-  const file = input.files?.[0];
-  if (!file) return;
-  if (file.size > 6 * 1024 * 1024) {
-    input.value = '';
-    productsFeedback.textContent = 'Each image must be smaller than 6 MB.';
+  const fileInput = event.target.closest('[data-image-file]');
+  if (fileInput) {
+    const index = Number(fileInput.dataset.imageFile);
+    if (!setImageFile(index, fileInput.files?.[0])) fileInput.value = '';
+    return;
+  }
+  const pathInput = event.target.closest('[data-image-path]');
+  if (!pathInput) return;
+  const index = Number(pathInput.dataset.imagePath);
+  const path = pathInput.value.trim();
+  if (path && !/^\/assets\/products\/(?!.*(?:\.\.|[?#\\]))[A-Za-z0-9][A-Za-z0-9._ %()-]*\.(?:jpg|jpeg|png|webp)$/i.test(path)) {
+    productsFeedback.textContent = 'Use a repository image path such as /assets/products/product-name.webp.';
     productsFeedback.className = 'admin-feedback error';
     return;
   }
-  selectedFiles[index] = file;
-  const preview = $(`[data-image-preview="${index}"]`);
-  preview.src = URL.createObjectURL(file);
-  input.nextElementSibling.textContent = `${file.name} · will upload when saved.`;
+  imagePaths[index] = path;
+  if (path) {
+    selectedFiles[index] = null;
+    if (previewUrls[index]) URL.revokeObjectURL(previewUrls[index]);
+    previewUrls[index] = '';
+  }
+  const preview = imageSlots.querySelector(`[data-image-preview="${index}"]`);
+  if (preview) preview.src = path || currentImages[index]?.url || '';
   productsFeedback.textContent = '';
   productsFeedback.className = 'admin-feedback';
+});
+
+imageSlots.addEventListener('dragover', event => {
+  if (event.target.closest('[data-image-drop]')) event.preventDefault();
+});
+
+imageSlots.addEventListener('drop', event => {
+  const slot = event.target.closest('[data-image-drop]');
+  if (!slot) return;
+  event.preventDefault();
+  const file = event.dataTransfer?.files?.[0];
+  if (file) setImageFile(Number(slot.dataset.imageDrop), file);
+});
+
+imageSlots.addEventListener('click', event => {
+  const primaryButton = event.target.closest('[data-primary-image]');
+  if (primaryButton) {
+    const index = Number(primaryButton.dataset.primaryImage);
+    if (index > 0) {
+      [currentImages[0], currentImages[index]] = [currentImages[index], currentImages[0]];
+      [selectedFiles[0], selectedFiles[index]] = [selectedFiles[index], selectedFiles[0]];
+      [imagePaths[0], imagePaths[index]] = [imagePaths[index], imagePaths[0]];
+      [previewUrls[0], previewUrls[index]] = [previewUrls[index], previewUrls[0]];
+      renderImageSlots();
+    }
+    return;
+  }
+  const removeButton = event.target.closest('[data-remove-image]');
+  if (removeButton) {
+    const index = Number(removeButton.dataset.removeImage);
+    currentImages[index] = null;
+    selectedFiles[index] = null;
+    imagePaths[index] = '';
+    if (previewUrls[index]) URL.revokeObjectURL(previewUrls[index]);
+    previewUrls[index] = '';
+    renderImageSlots();
+  }
+});
+
+$('#bulk-images').addEventListener('change', event => {
+  const files = [...event.target.files];
+  if (files.length > 4) {
+    event.target.value = '';
+    productsFeedback.textContent = 'Choose no more than four images.';
+    productsFeedback.className = 'admin-feedback error';
+    return;
+  }
+  const invalidFile = files.find(file => imageFileError(file));
+  if (invalidFile) {
+    event.target.value = '';
+    productsFeedback.textContent = imageFileError(invalidFile);
+    productsFeedback.className = 'admin-feedback error';
+    return;
+  }
+  clearPreviewUrls();
+  currentImages = [];
+  selectedFiles = [];
+  imagePaths = [];
+  files.forEach((file, index) => setImageFile(index, file));
+  renderImageSlots();
 });
 
 productForm.addEventListener('submit', async event => {
@@ -281,9 +441,9 @@ productForm.addEventListener('submit', async event => {
   button.disabled = true;
   productsFeedback.textContent = 'Saving product…';
   productsFeedback.className = 'admin-feedback';
+  let uploadedPublicIds = [];
+  let productId = productForm.elements.id.value;
   try {
-    const productId = productForm.elements.id.value;
-    const imagesBySlot = new Map(currentImages.map((image, slot) => [slot, image.key]));
     const formData = new FormData();
     formData.append('productId', productId);
     selectedFiles.forEach((file, slot) => {
@@ -292,10 +452,24 @@ productForm.addEventListener('submit', async event => {
       formData.append('slot', String(slot));
     });
     if (selectedFiles.some(Boolean)) {
-      const { images: uploaded } = await api('/api/admin/product-images', { method: 'POST', body: formData });
-      uploaded.forEach(image => { imagesBySlot.set(image.slot, image.key); });
+      productsFeedback.textContent = 'Uploading images… 0%';
+      const { images: uploaded } = await uploadProductImages(formData, progress => {
+        productsFeedback.textContent = `Uploading images… ${progress}%`;
+      });
+      uploadedPublicIds = uploaded.map(image => image.publicId);
+      uploaded.forEach(image => {
+        currentImages[image.slot] = {
+          ref: { source: image.source, publicId: image.publicId, url: image.url },
+          source: image.source,
+          publicId: image.publicId,
+          url: image.url
+        };
+      });
     }
-    const images = [...imagesBySlot.entries()].sort((a, b) => a[0] - b[0]).map(([, key]) => key);
+    const images = imageLabels.map((_, slot) => {
+      const path = imageSlots.querySelector(`[data-image-path="${slot}"]`)?.value.trim();
+      return path || currentImages[slot]?.ref || null;
+    }).filter(Boolean);
     const payload = {
       id: productId,
       title: productForm.elements.title.value.trim(),
@@ -309,14 +483,28 @@ productForm.addEventListener('submit', async event => {
       images,
       variants: collectVariants()
     };
-    const { product } = await api('/api/admin/products', { method: 'PUT', body: JSON.stringify(payload) });
+    productsFeedback.textContent = 'Saving product details…';
+    const { product, warnings = [] } = await api('/api/admin/products', { method: 'PUT', body: JSON.stringify(payload) });
     selectedFiles = [];
     await loadProducts();
     if (product) editProduct(product);
-    productsFeedback.textContent = 'Product saved successfully.';
-    productsFeedback.className = 'admin-feedback success';
+    productsFeedback.textContent = warnings.length
+      ? `Product saved. ${warnings.join(' ')}`
+      : 'Product saved successfully.';
+    productsFeedback.className = warnings.length ? 'admin-feedback error' : 'admin-feedback success';
   } catch (error) {
-    productsFeedback.textContent = error.message;
+    let message = error.message;
+    if (uploadedPublicIds.length) {
+      try {
+        await api('/api/admin/product-images', {
+          method: 'DELETE',
+          body: JSON.stringify({ productId, publicIds: uploadedPublicIds })
+        });
+      } catch (cleanupError) {
+        message = `${message} The newly uploaded images could not be cleaned up: ${cleanupError.message}`;
+      }
+    }
+    productsFeedback.textContent = message;
     productsFeedback.className = 'admin-feedback error';
   } finally {
     button.disabled = false;
@@ -355,10 +543,17 @@ $('#settings-form').addEventListener('submit', async event => {
       method: 'PUT',
       body: JSON.stringify({
         whatsapp_recipient: form.elements.whatsapp_recipient.value.trim(),
-        notification_email: form.elements.notification_email.value.trim()
+        notification_email: form.elements.notification_email.value.trim(),
+        chat_delivery_dhaka: Number(form.elements.chat_delivery_dhaka.value),
+        chat_delivery_subcity: Number(form.elements.chat_delivery_subcity.value),
+        chat_delivery_out: Number(form.elements.chat_delivery_out.value),
+        chat_support_phone: form.elements.chat_support_phone.value.trim(),
+        chat_size_chart: form.elements.chat_size_chart.value.trim(),
+        chat_promotions: form.elements.chat_promotions.value.trim(),
+        chat_faqs: form.elements.chat_faqs.value.trim()
       })
     });
-    settingsFeedback.textContent = 'Notification contacts saved for future orders.';
+    settingsFeedback.textContent = 'Store and assistant settings saved.';
     settingsFeedback.className = 'admin-feedback success';
   } catch (error) {
     settingsFeedback.textContent = error.message;

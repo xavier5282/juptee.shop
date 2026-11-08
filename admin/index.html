@@ -69,7 +69,9 @@
     .product-fields .wide{grid-column:1/-1}
     .product-fields input,.product-fields select,.product-fields textarea{margin-top:5px}
     .image-slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-    .image-slot{padding:9px;border:1px solid var(--ln);border-radius:12px;background:var(--bg)}
+    .image-slot{display:grid;gap:7px;padding:9px;border:1px solid var(--ln);border-radius:12px;background:var(--bg)}
+    .image-slot-controls{display:flex;gap:6px;flex-wrap:wrap}
+    .image-slot-controls button{width:auto;padding:7px 9px;font-size:10px}
     .image-slot img{display:block;width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:8px;background:var(--bg2);margin-bottom:7px}
     .image-slot img[src=""]{visibility:hidden}
     .image-slot input{font-size:10px;font-weight:400}
@@ -99,7 +101,7 @@
     <div class="admin-tabs" role="tablist" aria-label="Dashboard sections">
       <button class="admin-tab" id="orders-tab" role="tab" aria-selected="true" aria-controls="orders-panel">Orders</button>
       <button class="admin-tab" id="products-tab" role="tab" aria-selected="false" aria-controls="products-panel">Products &amp; photos</button>
-      <button class="admin-tab" id="settings-tab" role="tab" aria-selected="false" aria-controls="settings-panel">Notification contacts</button>
+      <button class="admin-tab" id="settings-tab" role="tab" aria-selected="false" aria-controls="settings-panel">Store &amp; assistant</button>
     </div>
     <section class="admin-panel" id="orders-panel" role="tabpanel" aria-labelledby="orders-tab">
       <div class="orders-toolbar"><div><h2>Recent orders</h2><p id="orders-count">Loading orders…</p></div><button class="btn alt" id="refresh-orders" type="button">Refresh</button></div>
@@ -107,8 +109,8 @@
       <p class="admin-feedback" id="orders-feedback" role="status"></p>
     </section>
     <section class="admin-panel" id="products-panel" role="tabpanel" aria-labelledby="products-tab" hidden>
-      <div class="orders-toolbar"><div><h2>Products &amp; images</h2><p>Upload four real product photos, manage sizes and stock, then publish to the storefront.</p></div><button class="btn alt" id="new-product" type="button">Add product</button></div>
-      <p class="admin-warning">Published prices and stock are used at checkout. Upload accurate photos and enter verified inventory. Product photos accept JPEG, PNG, or WebP up to 6 MB each.</p>
+      <div class="orders-toolbar"><div><h2>Products &amp; images</h2><p>Manage product images, sizes, and stock, then publish to the storefront.</p></div><button class="btn alt" id="new-product" type="button">Add product</button></div>
+      <p class="admin-warning">Published prices and stock are used at checkout. Use verified product images and inventory. Uploads accept JPG, PNG, or WebP up to 6 MB each.</p>
       <div class="product-admin-grid">
         <div><h3>Catalog</h3><div class="product-list" id="product-list" aria-live="polite"><div class="admin-empty">Loading products…</div></div></div>
         <form class="product-editor" id="product-form" hidden>
@@ -132,9 +134,13 @@
             <button class="btn alt wide" id="build-variants" type="button">Build variants from colors and sizes</button>
             <label class="wide">Display order <input name="sortOrder" type="number" min="0" step="1" value="0"></label>
           </div>
-          <h3>Four product photos</h3>
-          <span class="hint">Add a front, back, side, and detail photo. All four are required to publish.</span>
+          <h3>Product photos</h3>
+          <span class="hint">Use repository paths or upload JPG, PNG, or WebP (up to 6 MB each). Up to four images are supported; all four are required to publish.</span>
           <div class="image-slots" id="image-slots"></div>
+          <label>Upload multiple photos
+            <input id="bulk-images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+            <span class="hint">Select up to four files; this replaces the gallery in slot order.</span>
+          </label>
           <h3>Variation stock</h3>
           <div class="variant-table-wrap"><table class="variant-table"><thead><tr><th>Color</th><th>Size</th><th>Stock</th><th>Active</th></tr></thead><tbody id="variant-rows"></tbody></table></div>
           <label><input name="active" type="checkbox" style="width:auto"> Publish on storefront</label>
@@ -144,8 +150,8 @@
       </div>
     </section>
     <section class="admin-panel" id="settings-panel" role="tabpanel" aria-labelledby="settings-tab" hidden>
-      <h2>Notification contacts</h2>
-      <p>These contacts receive new order notifications. Changes apply to future orders.</p>
+      <h2>Store &amp; assistant settings</h2>
+      <p>Manage order notifications and the public shopping assistant. Product names, prices, and stock always come from the published catalog. Payment remains cash on delivery.</p>
       <form class="admin-form" id="settings-form">
         <label>Business WhatsApp recipient
           <input name="whatsapp_recipient" type="tel" autocomplete="tel" placeholder="+8801XXXXXXXXX" required>
@@ -153,7 +159,31 @@
         <label>Order notification email
           <input name="notification_email" type="email" autocomplete="email" required>
         </label>
-        <button class="btn" type="submit">Save notification contacts</button>
+        <label>Delivery inside Dhaka (BDT)
+          <input name="chat_delivery_dhaka" type="number" min="0" max="2000" step="1" required>
+        </label>
+        <label>Delivery sub-city (BDT)
+          <input name="chat_delivery_subcity" type="number" min="0" max="2000" step="1" required>
+        </label>
+        <label>Delivery outside city (BDT)
+          <input name="chat_delivery_out" type="number" min="0" max="2000" step="1" required>
+        </label>
+        <label>Human support phone
+          <input name="chat_support_phone" type="tel" autocomplete="tel" required>
+        </label>
+        <label class="wide">Size chart
+          <textarea name="chat_size_chart" rows="5" maxlength="2000" required></textarea>
+          <span class="hint">Use one size and garment chest measurement per line.</span>
+        </label>
+        <label class="wide">Promotions
+          <textarea name="chat_promotions" rows="3" maxlength="2000" placeholder="Leave blank when no promotion is active."></textarea>
+          <span class="hint">Only enter active offers. This text is informational; the checkout currently does not apply coupon or discount amounts.</span>
+        </label>
+        <label class="wide">Business FAQs
+          <textarea name="chat_faqs" rows="5" maxlength="6000" required></textarea>
+          <span class="hint">Keep answers current; the assistant will treat these notes as its FAQ source.</span>
+        </label>
+        <button class="btn" type="submit">Save store settings</button>
       </form>
       <p class="admin-feedback" id="settings-feedback" role="status"></p>
     </section>

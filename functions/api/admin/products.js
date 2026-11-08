@@ -1,4 +1,5 @@
 import { errorResponse, json } from '../../_lib/http.js';
+import { deleteCloudinaryImage, isCloudinaryImage, optimizedImageUrl } from '../../_lib/cloudinary.js';
 
 const CATEGORIES = new Set(['regular', 'oversized', 'dropshoulder', 'couple', 'hoodies', 'accessories']);
 const PRODUCT_ID = /^[A-Z0-9][A-Z0-9_-]{2,59}$/;
@@ -19,8 +20,36 @@ function variantId(productId, color, size) {
   return `${productId}-${colorCode}-${sizeCode}`;
 }
 
-function publicImage(key) {
-  return `/media/${key.split('/').map(encodeURIComponent).join('/')}`;
+function publicImage(image, width = 600) {
+  if (image && typeof image === 'object' && image.source === 'cloudinary') {
+    return optimizedImageUrl(image.url, width);
+  }
+  if (typeof image === 'string' && image.startsWith('/')) return image;
+  return `/media/${image.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+function validLocalImagePath(path) {
+  if (typeof path !== 'string' || !path.startsWith('/assets/products/') || /[?#\\]/.test(path)) return false;
+  try {
+    const parts = decodeURIComponent(path).split('/');
+    return parts.length === 4
+      && parts[1] === 'assets'
+      && parts[2] === 'products'
+      && /^[A-Za-z0-9][A-Za-z0-9._ -]*\.(?:jpg|jpeg|png|webp)$/i.test(parts[3])
+      && !parts[3].includes('..');
+  } catch {
+    return false;
+  }
+}
+
+function validLegacyImageKey(key, productId) {
+  return typeof key === 'string'
+    && key.startsWith(`products/${productId}/`)
+    && /^products\/[A-Z0-9_-]{3,60}\/[0-9a-f-]{36}\.(?:jpg|png|webp)$/.test(key);
+}
+
+function imageIdentity(image) {
+  return image && typeof image === 'object' ? image.publicId : image;
 }
 
 async function productRows(env) {
@@ -62,7 +91,12 @@ async function productRows(env) {
       badge: product.badge,
       active: Boolean(product.active),
       sortOrder: product.sort_order,
-      images: (Array.isArray(images) ? images : []).map(key => ({ key, url: publicImage(key) })),
+      images: (Array.isArray(images) ? images : []).map(image => ({
+        ref: image,
+        source: typeof image === 'string' ? (image.startsWith('/') ? 'local' : 'legacy') : image.source,
+        publicId: typeof image === 'object' ? image.publicId : '',
+        url: publicImage(image)
+      })),
       variants: byProduct.get(product.id)
     };
   });
@@ -73,7 +107,7 @@ export async function onRequestGet({ env }) {
     return json({ products: await productRows(env) });
   } catch (error) {
     console.error('Could not load admin products:', error);
-    return errorResponse('Could not load products. Check the D1 products migration and image bucket binding.', 503);
+    return errorResponse('Could not load products. Check the D1 products migration and required image storage settings.', 503);
   }
 }
 
@@ -107,11 +141,12 @@ export async function onRequestPut({ request, env }) {
     || typeof body.active !== 'boolean') {
     return errorResponse('Check the product ID, title, category, regular price, sale price, and publication status.', 400);
   }
-  if (!Array.isArray(images) || images.length > 4 || new Set(images).size !== images.length
-    || images.some(key => typeof key !== 'string'
-      || !key.startsWith(`products/${id}/`)
-      || !/^products\/[A-Z0-9_-]{3,60}\/[0-9a-f-]{36}\.(?:jpg|png|webp)$/.test(key))) {
-    return errorResponse('Product images must be uploaded to this product using the image upload form.', 400);
+  if (!Array.isArray(images) || images.length > 4
+    || new Set(images.map(imageIdentity)).size !== images.length
+    || images.some(image => typeof image === 'string'
+      ? !(validLocalImagePath(image) || validLegacyImageKey(image, id))
+      : !isCloudinaryImage(image, id, String(env.CLOUDINARY_CLOUD_NAME || '')))) {
+    return errorResponse('Use a valid local product image path, an existing image, or a Cloudinary image uploaded for this product.', 400);
   }
   if (active && images.length !== 4) {
     return errorResponse('Upload all four product images before publishing this product.', 400);
@@ -150,10 +185,19 @@ export async function onRequestPut({ request, env }) {
   }
 
   try {
-    for (const key of images) {
-      if (!await env.PRODUCT_IMAGES.head(key)) {
+    for (const image of images) {
+      if (typeof image === 'string' && !image.startsWith('/') && !await env.PRODUCT_IMAGES.head(image)) {
         return errorResponse('One of the selected product images could not be found in storage.', 400);
       }
+    }
+    const existingProduct = await env.DB.prepare(
+      'SELECT images_json FROM products WHERE id = ?'
+    ).bind(id).first();
+    let previousImages = [];
+    try {
+      previousImages = existingProduct ? JSON.parse(existingProduct.images_json) : [];
+    } catch (error) {
+      console.error(`Product ${id} has invalid image metadata before save:`, error);
     }
     const existingVariants = await env.DB.prepare(
       `SELECT id, product_id FROM catalog_variants
@@ -189,7 +233,23 @@ export async function onRequestPut({ request, env }) {
       ).bind(variant.id, id, title, category, variant.color, variant.size, salePrice || price, variant.stock, variant.active ? 1 : 0))
     ];
     await env.DB.batch(statements);
-    return json({ product: (await productRows(env)).find(product => product.id === id) }, 200);
+    const product = (await productRows(env)).find(item => item.id === id);
+    const retainedCloudinaryIds = new Set(images
+      .filter(image => image && typeof image === 'object')
+      .map(image => image.publicId));
+    const removedCloudinaryImages = (Array.isArray(previousImages) ? previousImages : [])
+      .filter(image => image && typeof image === 'object'
+        && image.source === 'cloudinary' && !retainedCloudinaryIds.has(image.publicId));
+    const warnings = [];
+    for (const image of removedCloudinaryImages) {
+      try {
+        await deleteCloudinaryImage(image.publicId, env);
+      } catch (error) {
+        console.error(`Could not delete replaced Cloudinary image ${image.publicId}:`, error);
+        warnings.push('The product was saved, but a replaced Cloudinary image could not be deleted.');
+      }
+    }
+    return json({ product, warnings }, 200);
   } catch (error) {
     console.error(`Could not save product ${id}:`, error);
     return errorResponse('Could not save this product. Check that the product ID and variant IDs are unique.', 503);

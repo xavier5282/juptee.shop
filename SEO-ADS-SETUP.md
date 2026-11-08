@@ -10,7 +10,7 @@ Before launch:
 
 1. Replace the sample product data with confirmed products, prices, variant availability, and public HTTPS product images.
 2. Complete and test the Cloudflare order-service deployment in `ORDER-SYSTEM-SETUP.md`, load verified inventory, and publish final business, delivery, returns, privacy, and terms information.
-3. Confirm that `https://jupbd.shop/` is the canonical production domain. Update the canonical URL, Open Graph URL, JSON-LD URLs, `robots.txt`, and `sitemap.xml` together if the domain differs.
+3. Confirm that `https://juptee.shop/` is the canonical production domain. Update the canonical URL, Open Graph URL, JSON-LD URLs, `robots.txt`, and `sitemap.xml` together if the domain differs.
 4. Remove or change the `noindex,follow` meta tag in `index.html` to `index,follow` only after the production site is ready. Add a real 1200×630 social-sharing image and set `og:image` when product/brand photography is available.
 5. Deploy the site over HTTPS. Confirm `/robots.txt`, `/sitemap.xml`, `/site.webmanifest`, `/assets/favicon.ico`, and `/assets/juptee-favicon.png` return successfully.
 
@@ -18,7 +18,7 @@ Before launch:
 
 1. Add the production domain as a **Domain property** in Google Search Console.
 2. Verify ownership by adding the exact DNS TXT record Google provides to the domain's DNS settings. The verification value is account-specific and is intentionally not fabricated in this project.
-3. After launch and removal of `noindex`, submit `https://jupbd.shop/sitemap.xml` in Search Console.
+3. After launch and removal of `noindex`, submit `https://juptee.shop/sitemap.xml` in Search Console.
 4. The storefront uses hash-based routes (for example `#p-size`). Hash fragments are not separate crawlable sitemap pages. For dedicated search listings for products, categories, and policies, migrate them to real server-served paths with unique canonical URLs and rendered page content.
 
 ## Google Ads and publisher ads

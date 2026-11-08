@@ -1,4 +1,5 @@
 import { errorResponse, json } from '../../_lib/http.js';
+import { deleteCloudinaryImage, uploadCloudinaryImage } from '../../_lib/cloudinary.js';
 
 const MAX_FILE_BYTES = 6 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
@@ -63,33 +64,66 @@ export async function onRequestPost({ request, env }) {
       return errorResponse('The selected images exceed the total upload limit of 20 MB.', 413);
     }
     const type = await imageType(file);
-    if (!type) return errorResponse('Use genuine JPEG, PNG, or WebP image files.', 415);
+    if (!type || (file.type && file.type.toLowerCase() !== type.contentType)) {
+      return errorResponse('Use genuine JPEG, PNG, or WebP image files with a matching file type.', 415);
+    }
     uploads.push({ file, slot, ...type });
   }
 
   const saved = [];
   try {
     for (const upload of uploads) {
-      const key = `products/${productId}/${crypto.randomUUID()}.${upload.extension}`;
-      await env.PRODUCT_IMAGES.put(key, upload.file.stream(), {
-        httpMetadata: {
-          contentType: upload.contentType,
-          cacheControl: 'public, max-age=31536000, immutable'
-        },
-        customMetadata: { productId, gallerySlot: String(upload.slot) }
-      });
-      saved.push({ slot: upload.slot, key, url: `/media/${key}` });
+      const image = await uploadCloudinaryImage(upload.file, productId, upload.extension, env);
+      saved.push({ slot: upload.slot, ...image });
     }
     return json({ images: saved }, 201);
   } catch (error) {
     console.error(`Could not upload product images for ${productId}:`, error);
     await Promise.all(saved.map(async image => {
       try {
-        await env.PRODUCT_IMAGES.delete(image.key);
+        await deleteCloudinaryImage(image.publicId, env);
       } catch (cleanupError) {
-        console.error(`Could not clean up incomplete product image ${image.key}:`, cleanupError);
+        console.error(`Could not clean up incomplete Cloudinary image ${image.publicId}:`, cleanupError);
       }
     }));
-    return errorResponse('The images could not be saved. No product changes were made.', 503);
+    return errorResponse('Cloudinary could not save the selected images. No product changes were made.', 503);
+  }
+}
+
+export async function onRequestDelete({ request, env }) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse('Image deletion details must be sent as JSON.', 400);
+  }
+  const productId = String(body?.productId || '').trim();
+  const publicIds = body?.publicIds;
+  if (!PRODUCT_ID.test(productId) || !Array.isArray(publicIds) || !publicIds.length || publicIds.length > 4
+    || publicIds.some(publicId => typeof publicId !== 'string'
+      || !new RegExp(`^juptee/products/${productId}/[0-9a-f-]{36}$`).test(publicId))
+    || new Set(publicIds).size !== publicIds.length) {
+    return errorResponse('The requested product images are invalid.', 400);
+  }
+  try {
+    const savedProduct = await env.DB.prepare(
+      'SELECT images_json FROM products WHERE id = ?'
+    ).bind(productId).first();
+    let savedIds = [];
+    try {
+      savedIds = JSON.parse(savedProduct?.images_json || '[]')
+        .filter(image => image && typeof image === 'object' && image.source === 'cloudinary')
+        .map(image => image.publicId);
+    } catch (error) {
+      console.error(`Product ${productId} has invalid image metadata during image cleanup:`, error);
+    }
+    if (publicIds.some(publicId => savedIds.includes(publicId))) {
+      return errorResponse('A saved product image cannot be deleted without removing it from the product first.', 409);
+    }
+    await Promise.all(publicIds.map(publicId => deleteCloudinaryImage(publicId, env)));
+    return json({ deleted: publicIds });
+  } catch (error) {
+    console.error(`Could not delete unassigned Cloudinary images for ${productId}:`, error);
+    return errorResponse('The unsaved product images could not be deleted.', 503);
   }
 }

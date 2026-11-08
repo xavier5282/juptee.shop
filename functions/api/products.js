@@ -1,7 +1,12 @@
 import { errorResponse, json } from '../_lib/http.js';
+import { optimizedImageUrl } from '../_lib/cloudinary.js';
 
-function mediaUrl(key) {
-  return `/media/${key.split('/').map(encodeURIComponent).join('/')}`;
+function publicImage(image) {
+  if (image && typeof image === 'object' && image.source === 'cloudinary') {
+    return optimizedImageUrl(image.url);
+  }
+  if (typeof image === 'string' && image.startsWith('/')) return image;
+  return `/media/${image.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 export async function onRequestGet({ env }) {
@@ -51,7 +56,7 @@ export async function onRequestGet({ env }) {
         sizes: [...new Set(variants.map(variant => variant.size))],
         stock: variants.reduce((total, variant) => total + variant.stock, 0),
         variants,
-        images: images.map(mediaUrl)
+        images: images.map(publicImage)
       }];
     });
 

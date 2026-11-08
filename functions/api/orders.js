@@ -1,7 +1,7 @@
 import { errorResponse, json } from '../_lib/http.js';
 import { dispatchOrderNotifications } from '../_lib/notifications.js';
+import { getChatSettings } from '../_lib/shop-config.js';
 
-const DELIVERY_FEES = { dhaka: 80, subcity: 100, out: 130 };
 const MAX_DISTINCT_ITEMS = 8;
 
 function clean(value, maxLength) {
@@ -125,7 +125,8 @@ export async function onRequestPost(context) {
     if (!Number.isSafeInteger(subtotal)) {
       return errorResponse('The product catalogue contains an invalid order total. Please contact JUPTEE.', 503);
     }
-    const deliveryCharge = DELIVERY_FEES[area];
+    const { deliveryFees } = await getChatSettings(env.DB);
+    const deliveryCharge = deliveryFees[area];
     const discount = 0;
     const total = subtotal + deliveryCharge - discount;
     if (!Number.isSafeInteger(total)) {
@@ -148,7 +149,7 @@ export async function onRequestPost(context) {
       total_amount: total,
       items: orderItems,
       created_at: createdAt,
-      admin_url: new URL('/admin/', env.PUBLIC_SITE_URL || 'https://jupbd.shop').href
+      admin_url: new URL('/admin/', env.PUBLIC_SITE_URL || 'https://juptee.shop').href
     };
 
     const statements = [

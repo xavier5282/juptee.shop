@@ -3,7 +3,7 @@ pages_build_output_dir = "."
 compatibility_date = "2026-11-07"
 
 [vars]
-PUBLIC_SITE_URL = "https://jupbd.shop"
+PUBLIC_SITE_URL = "https://juptee.shop"
 
 [[d1_databases]]
 binding = "DB"
