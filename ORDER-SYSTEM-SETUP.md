@@ -46,16 +46,26 @@ For each result, replace or migrate those images from the protected dashboard an
 
 ## 2. Protect the admin dashboard
 
-Create Cloudflare Access self-hosted applications for the Pages hostname, restricting access to the paths `/admin*` and `/api/admin/*`. If Cloudflare requires separate applications for those paths, create both and allow only the authorized JUPTEE administrators.
+Create Cloudflare Access self-hosted applications for the Pages hostname, restricting access to `/admin*` and `/api/admin/*`. If Cloudflare requires separate applications for those paths, create both and allow only the authorized JUPTEE administrators. Access policies are the primary user authorization boundary; requests denied there do not reach Pages Functions.
 
 Set these Pages environment variables in production:
 
 | Variable | Value |
 | --- | --- |
-| `CF_ACCESS_TEAM_DOMAIN` | Your Access team domain only, such as `your-team.cloudflareaccess.com` (no `https://`) |
+| `CF_ACCESS_TEAM_DOMAIN` | Your Access team domain, such as `your-team.cloudflareaccess.com` (the HTTPS URL is also accepted) |
 | `CF_ACCESS_AUD` | The Access application audience tag; if two applications are used, enter both tags separated by a comma |
 | `PUBLIC_SITE_URL` | `https://juptee.shop` (update if the production domain changes) |
 | `CLOUDINARY_CLOUD_NAME` | Cloudinary product environment cloud name |
+
+Optionally set `CF_ACCESS_ALLOWED_EMAILS` to a comma-separated list of administrator email addresses as an additional server-side allowlist. The middleware compares this list only with the email claim inside a cryptographically verified Access JWT; it does not trust request email headers. If omitted, the Cloudflare Access application policy remains the administrator authorization policy.
+
+The Pages middleware protects `/admin`, its nested assets, and every `/api/admin/*` endpoint. It fetches the official Access signing keys from `https://<team-domain>/cdn-cgi/access/certs`, verifies RS256 signature, exact issuer, one of the configured audience tags, expiration, not-before (when present), issued-at, and subject claims. Missing required Pages variables return HTTP 503 with a configuration diagnostic; missing or invalid assertions return 401; a verified identity outside the optional email allowlist returns 403. Cloudflare Access may reject users at its edge before the request reaches the middleware. The current repository has no separate application user/session or role system; Cloudflare Access policies provide administrator authentication and authorization.
+
+Run the middleware verification tests locally with:
+
+```powershell
+node --test tests/access-middleware.test.mjs
+```
 
 Add these Cloudinary values as Pages secrets (never add them to frontend code or Git):
 
