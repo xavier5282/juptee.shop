@@ -1,34 +1,34 @@
 # JUPTEE order system deployment
 
-The Cloudflare Pages Functions and D1 integration is implemented, but this workspace has not been connected to a Cloudflare account. Orders can only be accepted after the steps below are complete. Until then, the storefront intentionally remains a no-index setup preview with sample products.
+The Cloudflare Pages project and D1 database already exist. The production Pages project is `juptee-shop`; its D1 database is `juptee_shop` with ID `28e3769b-3016-4001-b911-f8b963d314e8`. The database currently has no tables, and all three repository migrations are pending, so order/catalog APIs that need D1 are not ready until the schema is applied. No production migration was run during this investigation.
 
 ## 1. Prepare Cloudflare Pages and D1
 
-1. Install Node.js and authenticate Wrangler with the Cloudflare account that owns `juptee.shop`.
-2. From the project root, create the D1 database and a Pages project:
+1. Install Node.js and authenticate Wrangler with the Cloudflare account that owns the existing `juptee-shop` Pages project.
+2. Do not create another Pages project or D1 database. Keep the existing D1 configuration in `wrangler.toml`:
 
    ```powershell
-   npx wrangler d1 create juptee-orders
-   npx wrangler pages project create juptee-store
+   binding = "DB"
+   database_name = "juptee_shop"
+   database_id = "28e3769b-3016-4001-b911-f8b963d314e8"
    ```
 
-3. Copy the database ID from the D1 command output into `database_id` in `wrangler.toml`. Keep the binding name as `DB`; the Functions use that name.
+3. Before applying schema changes, back up the production database. Then apply the pending migrations to the existing database:
+
+   ```powershell
+   npx wrangler d1 migrations apply juptee_shop --remote
+   ```
+
 4. Create a Cloudinary account and note the cloud name, API key, and API secret from the product environment's API settings. New admin uploads use Cloudinary; do not create an R2 bucket for new images.
-5. Apply the schema to the remote database:
+5. Keep the existing private `PRODUCT_IMAGES` R2 binding and bucket `juptee-product-images` while product rows may contain legacy R2 image keys; they preserve old `/media/` URLs. The binding is not used for new uploads. Do not remove the bucket or binding until legacy image references have been migrated and verified.
+6. After confirming the intended changes are committed, deploy to the existing Pages project from the project root:
 
    ```powershell
-   npx wrangler d1 migrations apply juptee-orders --remote
+   npx wrangler pages deploy . --project-name juptee-shop
    ```
 
-6. In the Pages project settings, attach the D1 database with binding `DB`. Keep the existing private `PRODUCT_IMAGES` R2 binding only while product rows still contain legacy R2 image keys; it preserves those old `/media/` URLs. The binding is not used for new uploads. For a fresh install with no legacy R2 keys, remove the existing `[[r2_buckets]]` block from `wrangler.toml` before deploying. For an existing catalog, keep that block and attach its existing bucket; do not remove the bucket or binding until all legacy image references have been migrated and verified.
-7. Deploy the site from the project root:
-
-   ```powershell
-   npx wrangler pages deploy . --project-name juptee-store
-   ```
-
-8. Add `juptee.shop` as a custom domain and enable HTTPS. Keep production and preview environments separate; do not point preview deployments at the production order database.
-9. Add Cloudflare rate-limiting rules for `POST /api/orders` and `POST /api/chatbot` to reduce automated order abuse and unexpected AI spend. Set conservative limits appropriate to expected traffic and monitor them during launch.
+7. `www.juptee.shop` is currently attached to the Pages project; add `juptee.shop` as a custom domain and enable HTTPS if the apex domain is intended. Keep production and preview environments separate; do not point preview deployments at the production order database.
+8. Add Cloudflare rate-limiting rules for `POST /api/orders` and `POST /api/chatbot` to reduce automated order abuse and unexpected AI spend. Set conservative limits appropriate to expected traffic and monitor them during launch.
 
 The migration creates the schema and initializes the business notification contacts to `+8801061103327` and `hellojuptee@gmail.com`. It deliberately does not create products or inventory.
 
@@ -72,11 +72,11 @@ Add these Cloudinary values as Pages secrets (never add them to frontend code or
 - `CLOUDINARY_API_KEY`
 - `CLOUDINARY_API_SECRET`
 
-They can be set from **Workers & Pages → juptee-store → Settings → Variables and Secrets**, or with Wrangler:
+The production project currently has `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_ADMIN_AUD`, and `CF_ACCESS_API_AUD` secrets, but the middleware reads `CF_ACCESS_AUD`. Set `CF_ACCESS_AUD` to the authorized audience tag or comma-separated tags from the Access applications; do not paste secret values into Git. They can be set from **Workers & Pages → juptee-shop → Settings → Variables and Secrets**, or with Wrangler:
 
 ```powershell
-npx wrangler pages secret put CLOUDINARY_API_KEY --project-name juptee-store
-npx wrangler pages secret put CLOUDINARY_API_SECRET --project-name juptee-store
+npx wrangler pages secret put CLOUDINARY_API_KEY --project-name juptee-shop
+npx wrangler pages secret put CLOUDINARY_API_SECRET --project-name juptee-shop
 ```
 
 Set `CLOUDINARY_CLOUD_NAME` as a Pages environment variable. The [Free plan](https://cloudinary.com/pricing) currently includes 25 monthly credits shared across managed storage, image bandwidth, and transformations; Cloudinary equates one credit to 1 GB of storage, 1 GB of image bandwidth, or 1,000 transformations. Monitor usage in the Cloudinary console; higher usage or upgraded features may require a paid plan. Signed requests follow [Cloudinary's signature guidance](https://cloudinary.com/documentation/authentication_signatures).
@@ -86,7 +86,7 @@ Set `CLOUDINARY_CLOUD_NAME` as a Pages environment variable. The [Free plan](htt
 The floating assistant uses the published D1 catalog and calls OpenAI only from a Pages Function. Create an OpenAI API key with API billing enabled, then add it to Pages secrets:
 
 ```powershell
-npx wrangler pages secret put OPENAI_API_KEY --project-name juptee-store
+npx wrangler pages secret put OPENAI_API_KEY --project-name juptee-shop
 ```
 
 Optionally set `OPENAI_MODEL` as a Pages environment variable (default: `gpt-4o-mini`). OpenAI API usage is billed separately from ChatGPT subscriptions; per-message cost depends on model and token use. Add a spend limit/alert in the OpenAI platform and a Cloudflare rate limit for `POST /api/chatbot`. Do not put the key in frontend code or Git.
@@ -99,10 +99,10 @@ The protected dashboard's **Store & assistant settings** panel configures Dhaka 
 
 The checkout and chatbot order form use the bilingual Bangladesh Locations Dataset in `assets/data/bangladesh-locations.json`, derived from [HedaetShahriar/bangladesh-locations-dataset](https://github.com/HedaetShahriar/bangladesh-locations-dataset) v1.5.0 at revision `0d3116a7f59be5b2450742432805df2ab505043e`. This snapshot contains all 8 divisions, 64 districts, 502 upazilas, and 74 thanas. The location selector loads this static same-origin asset, so it also works on static previews without Cloudflare Functions; server-side order validation uses the same dataset through `/api/locations` and the order API. It does not rely on a third-party runtime service. The dataset is MIT-licensed; see `assets/data/LICENSE-bangladesh-locations.txt`. Its maintainers note that the public-source dataset is not an official government publication and may contain name or spelling errors; verify customer-facing labels before launch.
 
-Apply the pending schema migration to each existing D1 database before deploying this version:
+Apply the pending schema migration to the existing production D1 database before deploying this version. Back up the database first:
 
 ```powershell
-npx wrangler d1 migrations apply juptee-orders --remote
+npx wrangler d1 migrations apply juptee_shop --remote
 ```
 
 Migration `0003_order_locations.sql` adds division, district, upazila/thana, and delivery-instruction fields while preserving prior orders. New checkout submissions send location IDs; the order API verifies that the district belongs to the selected division and the upazila/thana belongs to that district, then saves canonical location names. The server applies the configured Dhaka fee to orders in Dhaka district and the configured outside fee to every other district. The former sub-city fee setting remains in the admin form for compatibility but is not used by checkout. Admin orders, business notifications, and the customer confirmation display the saved location and address.
