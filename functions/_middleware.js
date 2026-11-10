@@ -223,9 +223,6 @@ export async function onRequest(context) {
     console.error('Admin authentication configuration error:', error.message);
     return response(`Administrator authentication is not configured. Set CF_ACCESS_TEAM_DOMAIN and ${audienceVariable} in the production Pages environment.`, 503);
   }
-  const isAdminDocument = ['GET', 'HEAD'].includes(context.request.method)
-    && ['/admin', '/admin/', '/admin/index.html'].includes(url.pathname);
-
   const token = context.request.headers.get('Cf-Access-Jwt-Assertion');
   if (!token) {
     return new Response('Administrator access required.', {
@@ -238,17 +235,17 @@ export async function onRequest(context) {
   try {
     result = await verifyAccessToken(token, config);
   } catch (error) {
+    if (error instanceof AccessTokenError) {
+      return response('Administrator access required.', 401);
+    }
     console.error('Cloudflare Access verification failed:', error);
     return new Response('Administrator authentication is temporarily unavailable.', {
       status: 503,
       headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' }
     });
   }
-  if (!valid) {
-    return new Response('Administrator access required.', {
-      status: 401,
-      headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' }
-    });
+  if (!result.authorized) {
+    return response('Administrator access denied.', 403);
   }
 
   const pageResponse = await context.next();
