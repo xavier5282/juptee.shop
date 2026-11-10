@@ -7,13 +7,13 @@ class AccessConfigurationError extends Error {}
 class AccessTokenError extends Error {}
 class AccessCertificateError extends Error {}
 
-function accessConfig(env) {
+function accessConfig(env, audienceVariable) {
   const rawDomain = typeof env.CF_ACCESS_TEAM_DOMAIN === 'string'
     ? env.CF_ACCESS_TEAM_DOMAIN.trim()
     : '';
-  const rawAudiences = typeof env.CF_ACCESS_AUD === 'string' ? env.CF_ACCESS_AUD : '';
+  const rawAudiences = typeof env[audienceVariable] === 'string' ? env[audienceVariable] : '';
   if (!rawDomain || !rawAudiences.trim()) {
-    throw new AccessConfigurationError('CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD must both be configured.');
+    throw new AccessConfigurationError(`CF_ACCESS_TEAM_DOMAIN and ${audienceVariable} must both be configured.`);
   }
 
   let teamUrl;
@@ -29,7 +29,7 @@ function accessConfig(env) {
 
   const audiences = rawAudiences.split(',').map(value => value.trim()).filter(Boolean);
   if (!audiences.length) {
-    throw new AccessConfigurationError('CF_ACCESS_AUD must contain at least one Access application audience tag.');
+    throw new AccessConfigurationError(`${audienceVariable} must contain at least one Access application audience tag.`);
   }
 
   let allowedEmails;
@@ -45,6 +45,7 @@ function accessConfig(env) {
 
   return {
     issuer: teamUrl.origin,
+    audienceVariable,
     audiences,
     allowedEmails
   };
@@ -124,7 +125,7 @@ async function verifyAccessToken(token, config) {
   }
   if (claims.iss !== config.issuer) throw new AccessTokenError('JWT issuer does not match the configured Access team.');
   if (!tokenAudiences.some(audience => typeof audience === 'string' && config.audiences.includes(audience))) {
-    throw new AccessTokenError('JWT audience does not match CF_ACCESS_AUD.');
+    throw new AccessTokenError(`JWT audience does not match ${config.audienceVariable}.`);
   }
   if (!Number.isSafeInteger(claims.exp) || claims.exp <= now || claims.exp <= claims.iat) {
     throw new AccessTokenError('JWT is expired or has an invalid expiration claim.');
@@ -181,11 +182,10 @@ async function verifyAccessToken(token, config) {
   return { authorized: true };
 }
 
-function isAdminPath(pathname) {
-  return pathname === '/admin'
-    || pathname.startsWith('/admin/')
-    || pathname === '/api/admin'
-    || pathname.startsWith('/api/admin/');
+function adminAudienceVariable(pathname) {
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'CF_ACCESS_ADMIN_AUD';
+  if (pathname === '/api/admin' || pathname.startsWith('/api/admin/')) return 'CF_ACCESS_API_AUD';
+  return null;
 }
 
 function response(message, status) {
@@ -201,14 +201,15 @@ function response(message, status) {
 
 export async function onRequest(context) {
   const url = new URL(context.request.url);
-  if (!isAdminPath(url.pathname)) return context.next();
+  const audienceVariable = adminAudienceVariable(url.pathname);
+  if (!audienceVariable) return context.next();
 
   let config;
   try {
-    config = accessConfig(context.env);
+    config = accessConfig(context.env, audienceVariable);
   } catch (error) {
     console.error('Admin authentication configuration error:', error.message);
-    return response('Administrator authentication is not configured. Set CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD in the production Pages environment.', 503);
+    return response(`Administrator authentication is not configured. Set CF_ACCESS_TEAM_DOMAIN and ${audienceVariable} in the production Pages environment.`, 503);
   }
 
   const token = context.request.headers.get('Cf-Access-Jwt-Assertion');

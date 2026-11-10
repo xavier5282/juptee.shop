@@ -53,13 +53,14 @@ Set these Pages environment variables in production:
 | Variable | Value |
 | --- | --- |
 | `CF_ACCESS_TEAM_DOMAIN` | Your Access team domain, such as `your-team.cloudflareaccess.com` (the HTTPS URL is also accepted) |
-| `CF_ACCESS_AUD` | The Access application audience tag; if two applications are used, enter both tags separated by a comma |
+| `CF_ACCESS_ADMIN_AUD` | Audience tag for the `/admin*` Access application |
+| `CF_ACCESS_API_AUD` | Audience tag for the `/api/admin/*` Access application |
 | `PUBLIC_SITE_URL` | `https://juptee.shop` (update if the production domain changes) |
 | `CLOUDINARY_CLOUD_NAME` | Cloudinary product environment cloud name |
 
 Optionally set `CF_ACCESS_ALLOWED_EMAILS` to a comma-separated list of administrator email addresses as an additional server-side allowlist. The middleware compares this list only with the email claim inside a cryptographically verified Access JWT; it does not trust request email headers. If omitted, the Cloudflare Access application policy remains the administrator authorization policy.
 
-The Pages middleware protects `/admin`, its nested assets, and every `/api/admin/*` endpoint. It fetches the official Access signing keys from `https://<team-domain>/cdn-cgi/access/certs`, verifies RS256 signature, exact issuer, one of the configured audience tags, expiration, not-before (when present), issued-at, and subject claims. Missing required Pages variables return HTTP 503 with a configuration diagnostic; missing or invalid assertions return 401; a verified identity outside the optional email allowlist returns 403. Cloudflare Access may reject users at its edge before the request reaches the middleware. The current repository has no separate application user/session or role system; Cloudflare Access policies provide administrator authentication and authorization.
+The Pages middleware protects `/admin`, its nested assets, and every `/api/admin/*` endpoint. Dashboard paths accept only the audience configured in `CF_ACCESS_ADMIN_AUD`; admin API paths accept only the audience configured in `CF_ACCESS_API_AUD`. Both use `CF_ACCESS_TEAM_DOMAIN` as their shared issuer and official signing-key source at `https://<team-domain>/cdn-cgi/access/certs`. The middleware verifies the RS256 signature, exact issuer, route-specific audience, expiration, not-before (when present), issued-at, and subject claims. Missing required Pages variables return HTTP 503 with a route-specific configuration diagnostic; missing or invalid assertions return 401; a verified identity outside the optional email allowlist returns 403. Cloudflare Access may reject users at its edge before the request reaches the middleware. The repository has no separate application login/session or role system; Cloudflare Access policies provide administrator authentication and authorization.
 
 Run the middleware verification tests locally with:
 
@@ -72,7 +73,7 @@ Add these Cloudinary values as Pages secrets (never add them to frontend code or
 - `CLOUDINARY_API_KEY`
 - `CLOUDINARY_API_SECRET`
 
-The production project currently has `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_ADMIN_AUD`, and `CF_ACCESS_API_AUD` secrets, but the middleware reads `CF_ACCESS_AUD`. Set `CF_ACCESS_AUD` to the authorized audience tag or comma-separated tags from the Access applications; do not paste secret values into Git. They can be set from **Workers & Pages → juptee-shop → Settings → Variables and Secrets**, or with Wrangler:
+The production project already has `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_ADMIN_AUD`, and `CF_ACCESS_API_AUD` configured; keep using these values for their respective routes. They can be managed from **Workers & Pages → juptee-shop → Settings → Variables and Secrets**. Do not paste secret values into Git. The Cloudinary API credentials can be set with Wrangler:
 
 ```powershell
 npx wrangler pages secret put CLOUDINARY_API_KEY --project-name juptee-shop

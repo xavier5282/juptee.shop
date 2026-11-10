@@ -7,7 +7,8 @@ import { webcrypto } from 'node:crypto';
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
 const issuer = 'https://juptee-team.cloudflareaccess.com';
-const audience = 'juptee-admin-audience';
+const adminAudience = 'juptee-admin-audience';
+const apiAudience = 'juptee-api-audience';
 const kid = 'test-access-key';
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const jwk = { ...publicKey.export({ format: 'jwk' }), kid, kty: 'RSA', alg: 'RS256', use: 'sig' };
@@ -28,7 +29,7 @@ function makeToken(claimOverrides = {}, headerOverrides = {}) {
   const header = { alg: 'RS256', kid, typ: 'JWT', ...headerOverrides };
   const claims = {
     iss: issuer,
-    aud: audience,
+    aud: adminAudience,
     sub: 'access-user-id',
     email: 'admin@example.com',
     iat: now - 5,
@@ -67,14 +68,15 @@ function context(path, { token, env = {}, headers = {} } = {}) {
 
 const validEnv = {
   CF_ACCESS_TEAM_DOMAIN: 'juptee-team.cloudflareaccess.com',
-  CF_ACCESS_AUD: audience
+  CF_ACCESS_ADMIN_AUD: adminAudience,
+  CF_ACCESS_API_AUD: apiAudience
 };
 
 test('allows an Access-signed JWT with a configured audience and official issuer keys', async () => {
   const calls = setCertificateResponse();
   const ctx = context('/admin/dashboard.js', {
-    token: makeToken({ aud: ['other-audience', audience] }),
-    env: { ...validEnv, CF_ACCESS_AUD: `other-configured-audience, ${audience}` }
+    token: makeToken({ aud: ['other-audience', adminAudience] }),
+    env: { ...validEnv, CF_ACCESS_ADMIN_AUD: `other-configured-audience, ${adminAudience}` }
   });
 
   const response = await onRequest(ctx.value);
@@ -84,6 +86,42 @@ test('allows an Access-signed JWT with a configured audience and official issuer
   assert.equal(ctx.nextCalled(), true);
   assert.equal(calls[0].url, `${issuer}/cdn-cgi/access/certs`);
   assert.equal(calls[0].options.headers.Accept, 'application/json');
+});
+
+test('allows an API token only with CF_ACCESS_API_AUD', async () => {
+  setCertificateResponse();
+  const ctx = context('/api/admin/products', {
+    token: makeToken({ aud: apiAudience }),
+    env: validEnv
+  });
+
+  const response = await onRequest(ctx.value);
+  assert.equal(response.status, 200);
+  assert.equal(ctx.nextCalled(), true);
+});
+
+test('does not accept the API audience on dashboard routes', async () => {
+  setCertificateResponse();
+  const ctx = context('/admin', {
+    token: makeToken({ aud: apiAudience }),
+    env: validEnv
+  });
+
+  const response = await onRequest(ctx.value);
+  assert.equal(response.status, 401);
+  assert.equal(ctx.nextCalled(), false);
+});
+
+test('does not accept the dashboard audience on admin API routes', async () => {
+  setCertificateResponse();
+  const ctx = context('/api/admin/settings', {
+    token: makeToken(),
+    env: validEnv
+  });
+
+  const response = await onRequest(ctx.value);
+  assert.equal(response.status, 401);
+  assert.equal(ctx.nextCalled(), false);
 });
 
 test('returns 401 for a missing token and ignores user-supplied identity headers', async () => {
@@ -150,7 +188,7 @@ test('returns 401 for an expired JWT', async () => {
 test('returns 403 for a valid Access identity outside the optional administrator allowlist', async () => {
   setCertificateResponse();
   const ctx = context('/api/admin/orders', {
-    token: makeToken({ email: 'not-an-admin@example.com' }),
+    token: makeToken({ aud: apiAudience, email: 'not-an-admin@example.com' }),
     env: { ...validEnv, CF_ACCESS_ALLOWED_EMAILS: 'admin@example.com' }
   });
 
@@ -164,7 +202,18 @@ test('returns 503 with a configuration diagnostic when required variables are mi
 
   const response = await onRequest(ctx.value);
   assert.equal(response.status, 503);
-  assert.match(await response.text(), /CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD/);
+  assert.match(await response.text(), /CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_ADMIN_AUD/);
+  assert.equal(ctx.nextCalled(), false);
+});
+
+test('requires the API audience variable for API routes even when the dashboard audience exists', async () => {
+  const ctx = context('/api/admin/orders', {
+    env: { CF_ACCESS_TEAM_DOMAIN: validEnv.CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_ADMIN_AUD: adminAudience }
+  });
+
+  const response = await onRequest(ctx.value);
+  assert.equal(response.status, 503);
+  assert.match(await response.text(), /CF_ACCESS_API_AUD/);
   assert.equal(ctx.nextCalled(), false);
 });
 
