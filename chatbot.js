@@ -1,12 +1,12 @@
 const root = document.querySelector('#jt-chat-root');
 const brandImage = window.jupteeAssetUrl ? window.jupteeAssetUrl('/assets/juptee-favicon.png') : '/assets/juptee-favicon.png';
-const state = { open: false, ready: false, loadedAt: 0, loading: false, products: [], settings: null, history: [], pendingOrder: null };
+const state = { open: false, ready: false, loadedAt: 0, loading: false, products: [], settings: null, history: [], pendingOrder: null, lastUserMessage: '', followLatest: true };
 const sizeDefault = 'M — 38 inches chest\nL — 40 inches chest\nXL — 42 inches chest\nXXL — 44 inches chest\n3XL — 46 inches chest';
 let orderFormSequence = 0;
 
 function messageLanguage(value) {
   if (/[\u0980-\u09FF]/.test(value)) return 'bn';
-  if (/\b(koto|dam|dhaka|baire|chai|kinbo|amar|ache|pabo|delivery|size ta)\b/i.test(value)) return 'banglish';
+  if (/\b(koto|dam|baire|chai|kinbo|amar|ache|pabo|size ta)\b/i.test(value)) return 'banglish';
   return 'en';
 }
 
@@ -20,7 +20,57 @@ function money(value) {
   return `৳${Number(value).toLocaleString('en-US')}`;
 }
 
+function formatAssistantText(text) {
+  const lines = String(text).split(/\r?\n/);
+  const blocks = [];
+  let paragraph = [];
+  let listType = '';
+  let listItems = [];
+
+  const inline = value => escapeHtml(value)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^\w])\*([^*\n]+)\*(?!\w)/g, '$1<em>$2</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+  const closeParagraph = () => {
+    if (paragraph.length) blocks.push(`<p>${paragraph.map(inline).join('<br>')}</p>`);
+    paragraph = [];
+  };
+  const closeList = () => {
+    if (listItems.length) blocks.push(`<${listType}>${listItems.map(item => `<li>${inline(item)}</li>`).join('')}</${listType}>`);
+    listItems = [];
+    listType = '';
+  };
+
+  for (const line of lines) {
+    const unordered = line.match(/^\s*[-*]\s+(.+)$/);
+    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    const heading = line.match(/^\s*#{1,3}\s+(.+)$/);
+    if (unordered || ordered) {
+      closeParagraph();
+      const nextType = unordered ? 'ul' : 'ol';
+      if (listType && listType !== nextType) closeList();
+      listType = nextType;
+      listItems.push((unordered || ordered)[1]);
+    } else {
+      closeList();
+      if (heading) {
+        closeParagraph();
+        blocks.push(`<h4>${inline(heading[1])}</h4>`);
+      } else if (line.trim()) paragraph.push(line);
+      else closeParagraph();
+    }
+  }
+  closeList();
+  closeParagraph();
+  return blocks.join('');
+}
+
 function addMessage(role, text, history = true) {
+  if (role === 'user') {
+    removeSuggestions();
+    state.lastUserMessage = text;
+    state.followLatest = true;
+  }
   const row = document.createElement('div');
   row.className = `jt-chat-msg ${role}`;
   if (role === 'assistant') {
@@ -32,7 +82,8 @@ function addMessage(role, text, history = true) {
   }
   const bubble = document.createElement('div');
   bubble.className = 'jt-chat-bubble';
-  bubble.textContent = text;
+  if (role === 'assistant') bubble.innerHTML = formatAssistantText(text);
+  else bubble.textContent = text;
   row.append(bubble);
   root.querySelector('.jt-chat-stream').append(row);
   scrollToBottom();
@@ -40,6 +91,7 @@ function addMessage(role, text, history = true) {
     state.history.push({ role, content: text });
     state.history = state.history.slice(-10);
   }
+  if (role === 'assistant') addSuggestions(state.lastUserMessage, text);
 }
 
 function addHtmlMessage(html) {
@@ -54,12 +106,117 @@ function addHtmlMessage(html) {
   bubble.innerHTML = html;
   row.append(avatar, bubble);
   root.querySelector('.jt-chat-stream').append(row);
+  addSuggestions(state.lastUserMessage, bubble.textContent || '');
   scrollToBottom();
 }
 
 function scrollToBottom() {
   const stream = root.querySelector('.jt-chat-stream');
-  requestAnimationFrame(() => { stream.scrollTop = stream.scrollHeight; });
+  if (!stream || !state.followLatest) return;
+  requestAnimationFrame(() => requestAnimationFrame(() => { stream.scrollTop = stream.scrollHeight; }));
+}
+
+function removeSuggestions() {
+  root.querySelectorAll('.jt-chat-suggestions').forEach(suggestions => suggestions.remove());
+}
+
+function addSuggestions(question, answer) {
+  const language = messageLanguage(question || '');
+  const context = `${question || ''} ${answer || ''}`.toLowerCase();
+  const prompt = (question || '').toLowerCase();
+  const browseQuestion = /(what products are available|available products|browse products|what do you sell|your collections|product collection|latest designs|colours are available|colors are available|couple t-?shirts|customize my own t-?shirt)/i.test(prompt);
+  const sizeQuestion = /(size guide|size chart|choose.*size|t-?shirt size|measure.*chest|sizing|garment.*measurement|xl and xxl|oversized sizes)/i.test(prompt);
+  const priceQuestion = /(price|pricing|cost|how much|custom printing|discount|দাম|দাম কত|\bkoto\b|\bdam\b)/i.test(prompt);
+  const deliveryQuestion = /(delivery|deliver|shipping|cash on delivery|track my order|delivery take|ঢাকা|ডেলিভারি)/i.test(prompt);
+  const orderQuestion = /(order|buy|purchase|checkout|অর্ডার|কিনব)/i.test(prompt);
+  const bulk = /\b(bulk|wholesale|wholesaler)\b|পাইকারি/.test(context);
+  const delivery = /\b(delivery|deliver|shipping|ঢাকা|ডেলিভারি)\b/.test(context);
+  const sizing = /\b(size|sizing|fit|measurement|chest)\b/.test(context);
+  const ordering = /\b(order|buy|purchase|checkout|অর্ডার|কিনব)\b/.test(context);
+  const pricing = /\b(price|pricing|cost|৳|t-?shirt|tee|দাম|koto|dam)\b/.test(context);
+  let suggestions;
+
+  if (language === 'bn') {
+    suggestions = bulk
+      ? ['বাল্ক অর্ডারের কোটেশন কীভাবে পাব?', 'কোন ডিজাইন কাস্টমাইজ করা যাবে?', 'কোন সাইজ ও রং আছে?', 'ডেলিভারি চার্জ কত?']
+      : delivery
+        ? ['টি-শার্টের দাম কত?', 'কোন সাইজ পাওয়া যাবে?', 'আমি অর্ডার করতে চাই।']
+        : sizing
+          ? ['কোন কোন টি-শার্ট স্টাইল আছে?', 'প্রতিটি স্টাইলের দাম কত?', 'ডেলিভারি চার্জ কত?']
+          : ordering
+            ? ['কোন সাইজ ও রং আছে?', 'ডেলিভারি চার্জ কত?', 'বাল্ক কোটেশন কীভাবে পাব?']
+            : pricing
+              ? ['কোন সাইজ পাওয়া যাবে?', 'ডেলিভারি চার্জ কত?', 'বাল্ক কোটেশন কীভাবে পাব?', 'আমি অর্ডার করতে চাই।']
+              : ['কোন সাইজ ও রং পাওয়া যাবে?', 'ডেলিভারি চার্জ কত?', 'টি-শার্টের দাম কত?', 'আমি অর্ডার করতে চাই।'];
+  } else if (language === 'banglish') {
+    suggestions = bulk
+      ? ['Bulk quotation kivabe pabo?', 'Kon design customize kora jabe?', 'Kon size ar color ache?', 'Delivery charge koto?']
+      : delivery
+        ? ['T-shirt-er dam koto?', 'Kon size pawa jabe?', 'Ami order korte chai.']
+        : sizing
+          ? ['Ki ki T-shirt style ache?', 'Prottek style-er dam koto?', 'Delivery charge koto?']
+          : ordering
+            ? ['Kon size ar color ache?', 'Delivery charge koto?', 'Bulk quotation kivabe pabo?']
+            : pricing
+              ? ['Kon size pawa jabe?', 'Delivery charge koto?', 'Bulk quotation kivabe pabo?', 'Ami order korte chai.']
+              : ['Kon size ar color pawa jabe?', 'Delivery charge koto?', 'T-shirt-er dam koto?', 'Ami order korte chai.'];
+  } else {
+    suggestions = browseQuestion
+      ? ['What are your latest designs?', 'What colours are available?', 'Do you have couple T-shirts?', 'Can I customize my own T-shirt?']
+      : sizeQuestion
+        ? ['Can I see the size chart?', 'Do you have XL and XXL?', 'Do you have oversized sizes?', 'How do I measure my chest?']
+        : priceQuestion
+          ? ['What is your bulk order price?', 'Can I order 10 pieces?', 'How much does custom printing cost?', 'Do you offer discounts?']
+          : deliveryQuestion
+            ? ['Is Cash on Delivery available?', 'How many days does delivery take?', 'Do you deliver outside Dhaka?', 'Can I track my order?']
+            : orderQuestion
+              ? ['Can I order through WhatsApp?', 'Can I customize a T-shirt?', 'Can I order multiple pieces?', 'What information is required to order?']
+              : bulk
+      ? ['How can I get a bulk quotation?', 'Which designs can I customize?', 'What sizes and colors are available?', 'How much is delivery?']
+      : delivery
+        ? ['What are the T-shirt prices?', 'What sizes are available?', "I'd like to place an order."]
+        : sizing
+          ? ['What T-shirt styles are available?', 'How much does each style cost?', 'How much is delivery?']
+          : ordering
+            ? ['What sizes and colors are available?', 'How much is delivery?', 'Can I get a bulk quotation?']
+            : pricing
+              ? ['What sizes are available?', 'How much is delivery?', 'Can I get a bulk quotation?', "I'd like to place an order."]
+              : ['What sizes and colors are available?', 'How much is delivery?', 'What T-shirt styles are available?', "I'd like to place an order."];
+  }
+
+  const list = document.createElement('div');
+  list.className = 'jt-chat-suggestions';
+  list.setAttribute('aria-label', 'Suggested questions');
+  const heading = document.createElement('span');
+  heading.className = 'jt-chat-suggestions-label';
+  heading.textContent = language === 'bn' ? 'আপনি আরও জানতে পারেন' : language === 'banglish' ? 'Apni aro jante paren' : 'Suggested for you';
+  const choices = document.createElement('div');
+  choices.className = 'jt-chat-suggestion-list';
+  list.append(heading);
+  for (const suggestion of new Set(suggestions)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'jt-chat-suggestion';
+    button.dataset.suggestion = '';
+    button.dataset.question = suggestion;
+    const icon = /bulk|quotation|piece|order/i.test(suggestion) ? '📦'
+      : /size|chest|fit|measurement|sizing/i.test(suggestion) ? '📏'
+        : /delivery|shipping|track/i.test(suggestion) ? '🚚'
+          : /color|colour|custom|design|printing/i.test(suggestion) ? '🎨'
+            : /discount|cash|payment/i.test(suggestion) ? '💳'
+              : /product|style|t-shirt|tee|collection|available/i.test(suggestion) ? '🛍️' : '✨';
+    const iconElement = document.createElement('span');
+    iconElement.className = 'jt-chat-suggestion-icon';
+    iconElement.setAttribute('aria-hidden', 'true');
+    iconElement.textContent = icon;
+    const label = document.createElement('span');
+    label.textContent = suggestion;
+    button.append(iconElement, label);
+    choices.append(button);
+  }
+  list.append(choices);
+  root.querySelector('.jt-chat-stream').append(list);
+  scrollToBottom();
 }
 
 function showTyping(visible) {
@@ -83,17 +240,17 @@ function renderWidget() {
     <section class="jt-chat-panel" role="dialog" aria-modal="false" aria-label="JUPTEE AI shopping assistant" ${state.open ? '' : 'hidden'}>
       <header class="jt-chat-head">
         <img class="jt-chat-brandmark" src="${escapeHtml(brandImage)}" alt="">
-        <div class="jt-chat-headcopy"><strong>JUPTEE</strong><span>AI Shopping Assistant</span></div>
+        <div class="jt-chat-headcopy"><strong>JUPTEE AI</strong><span>Your personal shopping assistant</span></div>
         <button class="jt-chat-close" type="button" aria-label="Close chat">×</button>
       </header>
       <div class="jt-chat-stream" role="log" aria-live="polite">
-        <div class="jt-chat-msg assistant"><img class="jt-chat-avatar" src="${escapeHtml(brandImage)}" alt=""><div class="jt-chat-bubble jt-chat-welcome">Hey! Welcome to Juptee! 👋 I'm your AI Shopping Assistant. I can help you find products, choose sizes, check prices, calculate delivery charges, and place orders. How can I help you today?</div></div>
+        <div class="jt-chat-msg assistant jt-chat-welcome-row"><img class="jt-chat-avatar" src="${escapeHtml(brandImage)}" alt=""><div class="jt-chat-bubble jt-chat-welcome"><strong>👋 Welcome to JUPTEE!</strong><p class="jt-chat-welcome-tagline">Your Style, Your Choice. ❤️</p><p>I'm JUPTEE AI, your personal shopping assistant. I can help you explore collections, find your size, check prices and place orders.</p><p>What would you like to explore today?</p></div></div>
         <div class="jt-chat-quick">
-          <button type="button" data-action="browse">🛍️ Browse Products</button>
-          <button type="button" data-action="size">📏 Size Guide</button>
-          <button type="button" data-action="prices">💰 Check Prices</button>
-          <button type="button" data-action="delivery">🚚 Delivery Information</button>
-          <button type="button" data-action="order">📦 Place an Order</button>
+          <button type="button" data-action="browse"><span aria-hidden="true">🛍️</span><span>Browse Products</span></button>
+          <button type="button" data-action="size"><span aria-hidden="true">📏</span><span>Size Guide</span></button>
+          <button type="button" data-action="prices"><span aria-hidden="true">💰</span><span>Check Prices</span></button>
+          <button type="button" data-action="delivery"><span aria-hidden="true">🚚</span><span>Delivery Information</span></button>
+          <button type="button" data-action="order"><span aria-hidden="true">📦</span><span>Place an Order</span></button>
         </div>
       </div>
       <form class="jt-chat-composer">
@@ -113,7 +270,20 @@ function renderWidget() {
     }
   });
   root.querySelector('.jt-chat-quick').addEventListener('click', quickAction);
-  root.querySelector('.jt-chat-stream').addEventListener('click', orderAction);
+  const stream = root.querySelector('.jt-chat-stream');
+  stream.addEventListener('scroll', () => {
+    state.followLatest = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 48;
+  }, { passive: true });
+  stream.addEventListener('click', event => {
+    const suggestion = event.target.closest('[data-suggestion]');
+    if (suggestion) {
+      const composer = root.querySelector('.jt-chat-composer');
+      composer.elements.message.value = suggestion.dataset.question;
+      composer.requestSubmit();
+      return;
+    }
+    orderAction(event);
+  });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && state.open) toggleChat(false);
   });
@@ -162,40 +332,169 @@ function quickAction(event) {
   if (!button) return;
   const action = button.dataset.action;
   if (action === 'browse') {
-    location.hash = '#shop';
-    toggleChat(false);
+    addMessage('user', 'What products are available at JUPTEE?');
+    addBrowseReply();
     return;
   }
   if (action === 'order') {
-    addMessage('user', 'I would like to place an order.', false);
-    startOrder();
+    addMessage('user', 'How can I place an order?');
+    addOrderReply();
+    if (state.ready && state.products.length) startOrder();
     return;
   }
   if (action === 'size') {
-    const chart = state.settings?.sizeChart || sizeDefault;
-    addMessage('user', 'Please help me choose a size.', false);
-    addMessage('assistant', `Here is the JUPTEE garment chest chart:\n${chart}\n\nThese are garment chest measurements, not body measurements. If you are between sizes, compare a well-fitting shirt or share your chest measurement. Fit can vary by style; I can’t guarantee an exact fit.`);
+    addMessage('user', 'How can I choose my T-shirt size?');
+    addSizeGuideReply();
     return;
   }
   if (action === 'delivery') {
-    addMessage('user', 'How much is delivery?', false);
+    addMessage('user', 'What are your delivery charges?');
     addDeliveryReply('en');
     return;
   }
   if (action === 'prices') {
-    addMessage('user', 'Please show me current product prices.', false);
-    showCatalog();
+    addMessage('user', 'What are your T-shirt prices?');
+    addPricingReply();
   }
+}
+
+function addBrowseReply() {
+  addMessage('assistant', `👋 **Welcome to JUPTEE! ❤️**
+
+Explore our stylish clothing collections, designed to make your everyday look more special.
+
+Our collection includes:
+- 👕 Regular T-shirts
+- ✨ Drop Shoulder T-shirts
+- 🔥 Oversized T-shirts
+- ❤️ Couple T-shirts
+- 🎨 Custom Printed T-shirts
+- 🧥 Hoodies
+- 👔 Polo T-shirts
+
+Discover your favourite style and make it yours! Visit our online store to explore the collection.`);
+}
+
+function addSizeGuideReply() {
+  const chart = state.settings?.sizeChart || sizeDefault;
+  const chartLines = chart.split(/\r?\n/).map(line => `- ${line}`).join('\n');
+  addMessage('assistant', `📏 **Find Your Perfect JUPTEE Fit!**
+
+Finding your perfect fit is easy. JUPTEE offers different sizes depending on the product and design. Before ordering, compare the measurements below with a T-shirt you already own:
+
+${chartLines}
+
+**Important size information:**
+- These are garment chest measurements, not body measurements.
+- If you're between sizes, compare with a well-fitting T-shirt.
+- Fit may vary by product style and design; we can't guarantee an exact fit.
+
+Need help choosing? Tell us your preferred fit and the product you're interested in. Our team can help you find a suitable size.`);
+}
+
+function addPricingReply() {
+  addMessage('assistant', `Here is our current JUPTEE pricing! 💰
+
+- 👕 **Regular T-shirt:** **৳350** per piece
+- ✨ **Drop Shoulder T-shirt:** **৳500** per piece
+
+📦 **Bulk orders**
+- Minimum quantity: approximately **10–15 pieces**
+- Pricing starts around **৳300 per piece**
+- Final pricing depends on design, quantity, printing, and customization requirements.
+
+For a customized quotation, contact JUPTEE with the quantity and design you have in mind.`);
+}
+
+function answerKnownQuestion(message, language) {
+  const lower = message.toLowerCase();
+  if (/cash on delivery/i.test(lower)) {
+    addMessage('assistant', `Yes, **Cash on Delivery** is available. Current delivery charges are **${money(configuredFees().dhaka)}** inside Dhaka and **${money(configuredFees().out)}** outside Dhaka.`);
+    return true;
+  }
+  if (/deliver outside dhaka/i.test(lower)) {
+    addMessage('assistant', `Yes, JUPTEE has an outside-Dhaka delivery charge of **${money(configuredFees().out)}**. The delivery fee is added to the product subtotal at checkout.`);
+    return true;
+  }
+  if (/(how many days does delivery take|track my order)/i.test(lower)) {
+    const contact = state.settings?.supportPhone ? ` Please contact JUPTEE at ${state.settings.supportPhone} for an update.` : ' Please contact JUPTEE support for an update.';
+    addMessage('assistant', `JUPTEE's current delivery charges are **${money(configuredFees().dhaka)}** inside Dhaka and **${money(configuredFees().out)}** outside Dhaka. We don't have a confirmed delivery timeframe or tracking service in the current information.${contact}`);
+    return true;
+  }
+  if (/(delivery|deliver|shipping|ঢাকা|ডেলিভারি)/i.test(lower)) {
+    addDeliveryReply(language);
+    return true;
+  }
+  const asksPrice = /(price|pricing|cost|how much|দাম|দাম কত|\bkoto\b|\bdam\b)/i.test(lower);
+  const mentionsBulk = /\b(bulk|wholesale|wholesaler)\b|পাইকারি/i.test(lower);
+  const asksAboutBulkQuantity = /\b(?:10|11|12|13|14|15|ten|eleven|twelve|thirteen|fourteen|fifteen)(?:\s*(?:-|–|to)\s*(?:10|11|12|13|14|15|ten|eleven|twelve|thirteen|fourteen|fifteen))?\s*(?:pieces?|pcs?|t-?shirts?|tees?|ta)\b/i.test(lower);
+  if (mentionsBulk && asksPrice) {
+    addMessage('assistant', 'For bulk orders, our minimum quantity is approximately **10–15 pieces**. Pricing starts from around **৳300 per piece** and depends on the design, quantity, printing requirements, and customization. Contact JUPTEE for a quotation.');
+    return true;
+  }
+  if (asksAboutBulkQuantity && /\b(can|could|may|order|buy|get| নিতে|nibo|nite)\b/i.test(lower)) {
+    addMessage('assistant', 'Yes! JUPTEE accepts bulk orders starting from approximately **10–15 pieces**. Pricing depends on your selected design and customization.');
+    return true;
+  }
+  if (asksPrice && /\b(drop[\s-]*shoulder|dropshoulder)\b/i.test(lower)) {
+    addMessage('assistant', 'Drop Shoulder T-shirts are **৳500 per piece**.');
+    return true;
+  }
+  if (asksPrice && /\b(t-?shirts?|tees?)\b/i.test(lower)) {
+    addPricingReply();
+    return true;
+  }
+  if (/(what products are available|available products|browse products|what do you sell|your collections|product collection)/i.test(lower)) {
+    addBrowseReply();
+    return true;
+  }
+  if (/(size guide|size chart|choose.*size|t-?shirt size|measure.*chest|sizing|garment.*measurement)/i.test(lower)) {
+    addSizeGuideReply();
+    return true;
+  }
+  if (/(how (?:can|do) i (?:place|make) (?:an? )?order|place an order|how to order)/i.test(lower)) {
+    addOrderReply();
+    return true;
+  }
+  if (/(bulk order price|bulk quotation|custom printing cost|offer discounts)/i.test(lower)) {
+    if (/bulk order price|bulk quotation/i.test(lower)) {
+      addMessage('assistant', 'Bulk orders start at approximately **10–15 pieces**, with pricing from around **৳300 per piece**. Final pricing depends on design, quantity, printing, and customization. Contact JUPTEE for a quotation.');
+    } else if (/custom printing cost/i.test(lower)) {
+      addMessage('assistant', 'Custom printing costs depend on the design, quantity, and printing requirements. Contact JUPTEE with your requirements for a quotation.');
+    } else {
+      addMessage('assistant', 'I can’t confirm an additional discount from the current store information. Bulk pricing starts around **৳300 per piece** for approximately 10–15 pieces and depends on design and customization. Contact JUPTEE for a quotation.');
+    }
+    return true;
+  }
+  return false;
+}
+
+function addOrderReply() {
+  addMessage('assistant', `Ordering your favourite JUPTEE product is simple! ❤️
+
+1. Browse the collection and choose a published product.
+2. Select an available colour and size.
+3. Choose your quantity.
+4. Complete your details and delivery address in the **secure order form**.
+5. Review and submit your order through the form.
+
+Ready to order? Use the secure form below when a live product is available. Please don't send personal or payment information in chat.`);
 }
 
 function addDeliveryReply(language) {
   const fees = configuredFees();
   if (language === 'bn') {
-    addMessage('assistant', `বর্তমান ডেলিভারি চার্জ:\n• ঢাকা জেলায়: ${money(fees.dhaka)}\n• ঢাকার বাইরে: ${money(fees.out)}\n\nচেকআউটে পণ্যের সাবটোটালের সঙ্গে ডেলিভারি যোগ হবে।`);
+    addMessage('assistant', `🚚 **বর্তমান ডেলিভারি চার্জ**\n\n- ঢাকা জেলায়: **${money(fees.dhaka)}**\n- ঢাকার বাইরে: **${money(fees.out)}**\n- পেমেন্ট: ক্যাশ অন ডেলিভারি\n\nচেকআউটে পণ্যের সাবটোটালের সঙ্গে ডেলিভারি যোগ হবে।`);
   } else if (language === 'banglish') {
-    addMessage('assistant', `Ekhon delivery charge:\n• Dhaka district-e: ${money(fees.dhaka)}\n• Dhakar baire: ${money(fees.out)}\n\nCheckout-e product subtotal-er sathe delivery jog hobe.`);
+    addMessage('assistant', `🚚 **Ekhon delivery charge**\n\n- Dhaka district-e: **${money(fees.dhaka)}**\n- Dhakar baire: **${money(fees.out)}**\n- Payment: Cash on Delivery\n\nCheckout-e product subtotal-er sathe delivery jog hobe.`);
   } else {
-    addMessage('assistant', `Current delivery charges:\n• Dhaka district: ${money(fees.dhaka)}\n• Outside Dhaka: ${money(fees.out)}\n\nDelivery is added to the product subtotal at checkout.`);
+    addMessage('assistant', `Good news! JUPTEE offers delivery with the configured charges. 🚚
+
+- 📍 **Inside Dhaka:** ${money(fees.dhaka)}
+- 📍 **Outside Dhaka:** ${money(fees.out)}
+- 💳 **Payment:** Cash on Delivery is available.
+
+Delivery is added to the product subtotal at checkout. Our current settings do not specify a delivery timeframe or tracking service.`);
   }
 }
 
@@ -237,10 +536,7 @@ async function sendMessage(event) {
   const language = messageLanguage(message);
   addMessage('user', message);
   const lower = message.toLowerCase();
-  if (/(delivery|deliver|shipping|delivery charge|ঢাকা|ডেলিভারি)/i.test(lower)) {
-    addDeliveryReply(language);
-    return;
-  }
+  if (answerKnownQuestion(message, language)) return;
   if (/(price|cost|দাম|দাম কত|\bkoto\b|\bdam\b)/i.test(lower) && state.products.length) {
     showCatalog(language);
     return;
@@ -267,6 +563,7 @@ async function sendMessage(event) {
     showTyping(false);
     const sendButton = root.querySelector('.jt-chat-send');
     if (sendButton) sendButton.disabled = false;
+    scrollToBottom();
     input.focus();
   }
 }
