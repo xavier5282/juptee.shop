@@ -1,8 +1,25 @@
+import { parseChatQuery, searchProducts } from './chat-search.mjs';
+
 const root = document.querySelector('#jt-chat-root');
 const brandImage = window.jupteeAssetUrl ? window.jupteeAssetUrl('/assets/juptee-favicon.png') : '/assets/juptee-favicon.png';
-const state = { open: false, ready: false, loadedAt: 0, loading: false, products: [], settings: null, history: [], pendingOrder: null, lastUserMessage: '', followLatest: true };
+const chatHistoryKey = 'jt_chat_history';
+const state = {
+  open: false, seen: false, ready: false, loadedAt: 0, loading: false, products: [], settings: null,
+  history: [], pendingOrder: null, lastUserMessage: '', followLatest: true,
+  filters: { size: [], minPrice: null, maxPrice: null }
+};
 const sizeDefault = 'M — 38 inches chest\nL — 40 inches chest\nXL — 42 inches chest\nXXL — 44 inches chest\n3XL — 46 inches chest';
 let orderFormSequence = 0;
+try {
+  const savedHistory = JSON.parse(sessionStorage.getItem(chatHistoryKey) || '[]');
+  if (Array.isArray(savedHistory)) {
+    state.history = savedHistory.filter(item => item && ['user', 'assistant'].includes(item.role)
+      && typeof item.content === 'string' && item.content.length <= 1200).slice(-10);
+    state.lastUserMessage = [...state.history].reverse().find(item => item.role === 'user')?.content || '';
+  }
+} catch (error) {
+  console.error('Could not restore the shopping assistant conversation.', error);
+}
 
 function messageLanguage(value) {
   if (/[\u0980-\u09FF]/.test(value)) return 'bn';
@@ -18,6 +35,15 @@ function escapeHtml(value) {
 
 function money(value) {
   return `৳${Number(value).toLocaleString('en-US')}`;
+}
+
+function markUnread() {
+  if (state.open) return;
+  state.seen = false;
+  const launch = root.querySelector('.jt-chat-launch');
+  if (!launch) return;
+  launch.querySelector('.jt-chat-unread').hidden = false;
+  launch.setAttribute('aria-label', 'Open JUPTEE shopping assistant, new message');
 }
 
 function formatAssistantText(text) {
@@ -68,6 +94,7 @@ function formatAssistantText(text) {
 function addMessage(role, text, history = true) {
   if (role === 'user') {
     removeSuggestions();
+    root.classList.add('jt-chat-has-history');
     state.lastUserMessage = text;
     state.followLatest = true;
   }
@@ -84,14 +111,26 @@ function addMessage(role, text, history = true) {
   bubble.className = 'jt-chat-bubble';
   if (role === 'assistant') bubble.innerHTML = formatAssistantText(text);
   else bubble.textContent = text;
-  row.append(bubble);
+  const timestamp = new Date();
+  const time = document.createElement('time');
+  time.className = 'jt-chat-time';
+  time.dateTime = timestamp.toISOString();
+  time.textContent = timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  row.append(bubble, time);
   root.querySelector('.jt-chat-stream').append(row);
   scrollToBottom();
   if (history && (role === 'user' || role === 'assistant')) {
     state.history.push({ role, content: text });
     state.history = state.history.slice(-10);
+    try {
+      sessionStorage.setItem(chatHistoryKey, JSON.stringify(state.history));
+    } catch (error) {
+      console.error('Could not save the shopping assistant conversation.', error);
+    }
   }
-  if (role === 'assistant') addSuggestions(state.lastUserMessage, text);
+  if (role === 'assistant' && history) addSuggestions(state.lastUserMessage, text);
+  if (role === 'assistant') markUnread();
+  return row;
 }
 
 function addHtmlMessage(html) {
@@ -104,8 +143,14 @@ function addHtmlMessage(html) {
   const bubble = document.createElement('div');
   bubble.className = 'jt-chat-bubble';
   bubble.innerHTML = html;
-  row.append(avatar, bubble);
+  const timestamp = new Date();
+  const time = document.createElement('time');
+  time.className = 'jt-chat-time';
+  time.dateTime = timestamp.toISOString();
+  time.textContent = timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  row.append(avatar, bubble, time);
   root.querySelector('.jt-chat-stream').append(row);
+  markUnread();
   addSuggestions(state.lastUserMessage, bubble.textContent || '');
   scrollToBottom();
 }
@@ -229,38 +274,152 @@ function showTyping(visible) {
   const row = document.createElement('div');
   row.className = 'jt-chat-msg assistant jt-chat-typing-row';
   row.setAttribute('aria-label', 'Assistant is typing');
-  row.innerHTML = `<img class="jt-chat-avatar" src="${escapeHtml(brandImage)}" alt=""><div class="jt-chat-bubble jt-chat-typing"><i></i><i></i><i></i></div>`;
+  row.innerHTML = `<img class="jt-chat-avatar" src="${escapeHtml(brandImage)}" alt=""><div class="jt-chat-bubble jt-chat-typing"><i></i><i></i><i></i></div><div class="jt-chat-product-skeletons" aria-label="Finding products"><i></i><i></i></div>`;
   root.querySelector('.jt-chat-stream').append(row);
   scrollToBottom();
 }
 
+function showSizeDialog(contents, title) {
+  const previous = root.querySelector('.jt-chat-size-dialog');
+  previous?.remove();
+  const dialog = document.createElement('dialog');
+  dialog.className = 'jt-chat-size-dialog';
+  dialog.setAttribute('aria-labelledby', 'jt-chat-size-title');
+  dialog.innerHTML = `<form method="dialog" class="jt-chat-size-dialog-card"><button class="jt-chat-dialog-close" aria-label="Close size guide">×</button><h2 id="jt-chat-size-title">${escapeHtml(title)}</h2>${contents}</form>`;
+  root.querySelector('.jt-chat-panel').append(dialog);
+  dialog.addEventListener('click', event => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  dialog.showModal();
+  dialog.querySelector('input,button')?.focus();
+}
+
+function openSizeChart() {
+  const chart = state.settings?.sizeChart || sizeDefault;
+  showSizeDialog(
+    `<p>Compare these garment chest measurements with a T-shirt that fits you well. They are not body measurements.</p><pre>${escapeHtml(chart)}</pre>`,
+    'JUPTEE size chart'
+  );
+}
+
+function openSizeHelper() {
+  showSizeDialog(
+    `<p>Height and weight help us understand your fit preference, but they cannot determine a shirt size reliably. We’ll show the verified garment chart so you can compare with a tee you already own. These details are not saved or sent to the assistant.</p>
+      <label>Height (cm)<input name="height" type="number" min="80" max="240" required inputmode="numeric"></label>
+      <label>Weight (kg)<input name="weight" type="number" min="20" max="300" required inputmode="numeric"></label>
+      <button class="jt-chat-size-submit" type="submit" value="continue">Show size chart</button>`,
+    'Find your size'
+  );
+  const dialog = root.querySelector('.jt-chat-size-dialog');
+  dialog.addEventListener('submit', event => {
+    if (event.submitter?.value !== 'continue') return;
+    event.preventDefault();
+    if (!dialog.querySelector('[name="height"]').reportValidity()
+      || !dialog.querySelector('[name="weight"]').reportValidity()) return;
+    dialog.close();
+    addMessage('assistant', 'Thanks for sharing. Height and weight alone can’t reliably determine your JUPTEE size, so please compare a well-fitting T-shirt’s chest measurement with the chart. If you’re between sizes, consider the larger one.');
+    openSizeChart();
+  });
+}
+
+function addProductCards(products, bubble) {
+  if (!Array.isArray(products) || !products.length || !bubble) return;
+  const carousel = document.createElement('div');
+  carousel.className = 'jt-chat-product-carousel';
+  for (const product of products.slice(0, 6)) {
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const available = variants.filter(variant => Number(variant.stock) > 0);
+    const sizeOptions = ['S', 'M', 'L', 'XL', 'XXL'];
+    const defaultVariant = available.find(variant => sizeOptions.includes(String(variant.size).toUpperCase()));
+    const image = product.images?.[0] || brandImage;
+    const imageUrl = window.jupteeAssetUrl ? window.jupteeAssetUrl(image) : image;
+    const regular = Number(product.price);
+    const sale = Number(product.salePrice);
+    const current = sale > 0 && sale < regular ? sale : (Number(defaultVariant?.unitPrice) || regular);
+    const card = document.createElement('article');
+    card.className = 'jt-chat-product-card';
+    card.dataset.chatProduct = '';
+    const sizeMarkup = sizeOptions.map(size => {
+      const variant = available.find(item => String(item.size).toUpperCase() === size);
+      return `<button type="button" data-chat-size data-variant-id="${escapeHtml(variant?.id || '')}" aria-pressed="false" ${variant ? '' : 'disabled'}>${size}</button>`;
+    }).join('');
+    card.innerHTML = `<a class="jt-chat-product-image" href="#product-${encodeURIComponent(product.id)}" aria-label="View ${escapeHtml(product.name)}"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name)}" loading="lazy" decoding="async"></a>
+      <div class="jt-chat-product-info"><strong>${escapeHtml(product.name)}</strong><span class="jt-chat-product-price">${sale > 0 && sale < regular ? `<b>৳${sale.toLocaleString('en-US')}</b> <s>৳${regular.toLocaleString('en-US')}</s>` : `৳${current.toLocaleString('en-US')}`}</span></div>
+      <div class="jt-chat-product-sizes" aria-label="Available sizes">${sizeMarkup}</div>
+      <div class="jt-chat-product-actions"><button type="button" data-add-chat data-product-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(defaultVariant?.id || '')}" ${defaultVariant ? '' : 'disabled'}>Add to bag</button><a href="#product-${encodeURIComponent(product.id)}">View</a></div>`;
+    if (defaultVariant) {
+      const defaultSizeButton = [...card.querySelectorAll('[data-chat-size]')]
+        .find(button => button.dataset.variantId === String(defaultVariant.id));
+      defaultSizeButton?.classList.add('selected');
+      defaultSizeButton?.setAttribute('aria-pressed', 'true');
+    }
+    const colorLabel = document.createElement('span');
+    colorLabel.className = 'jt-chat-product-color';
+    colorLabel.dataset.selectedColor = '';
+    colorLabel.textContent = defaultVariant ? `Color: ${defaultVariant.color}` : '';
+    card.querySelector('.jt-chat-product-info').append(colorLabel);
+    card.querySelectorAll('[data-chat-size]').forEach(button => {
+      button.addEventListener('click', () => {
+        const selected = variants.find(variant => String(variant.id) === button.dataset.variantId);
+        if (selected) colorLabel.textContent = `Color: ${selected.color}`;
+      });
+    });
+    const imageElement = card.querySelector('img');
+    imageElement.addEventListener('error', () => { imageElement.src = brandImage; }, { once: true });
+    carousel.append(card);
+  }
+  bubble.append(carousel);
+}
+
 function renderWidget() {
   root.innerHTML = `
-    <button class="jt-chat-launch" type="button" aria-label="${state.open ? 'Close' : 'Open'} JUPTEE shopping assistant" aria-expanded="${state.open}">✦</button>
-    <section class="jt-chat-panel" role="dialog" aria-modal="false" aria-label="JUPTEE AI shopping assistant" ${state.open ? '' : 'hidden'}>
+    <button class="jt-chat-launch" type="button" aria-label="${state.open ? 'Close' : 'Open'} JUPTEE shopping assistant${state.seen ? '' : ', new message'}" aria-expanded="${state.open}">✦<span class="jt-chat-unread" ${state.seen ? 'hidden' : ''}>1</span></button>
+    <section class="jt-chat-panel" role="dialog" aria-modal="true" aria-label="Juptee Assistant" ${state.open ? '' : 'hidden'}>
       <header class="jt-chat-head">
+        <button class="jt-chat-handle" type="button" aria-label="Drag down to minimize chat"><span></span></button>
         <img class="jt-chat-brandmark" src="${escapeHtml(brandImage)}" alt="">
-        <div class="jt-chat-headcopy"><strong>JUPTEE AI</strong><span>Your personal shopping assistant</span></div>
-        <button class="jt-chat-close" type="button" aria-label="Close chat">×</button>
+        <div class="jt-chat-headcopy"><strong>Juptee Assistant</strong><span><i class="jt-chat-online"></i> Online · here to help</span></div>
+        <button class="jt-chat-header-action jt-chat-clear" type="button" aria-label="Clear chat">Clear</button>
+        <button class="jt-chat-header-action jt-chat-minimize" type="button" aria-label="Minimize chat">−</button>
+        <button class="jt-chat-header-action jt-chat-close" type="button" aria-label="Close chat">×</button>
       </header>
-      <div class="jt-chat-stream" role="log" aria-live="polite">
-        <div class="jt-chat-msg assistant jt-chat-welcome-row"><img class="jt-chat-avatar" src="${escapeHtml(brandImage)}" alt=""><div class="jt-chat-bubble jt-chat-welcome"><strong>👋 Welcome to JUPTEE!</strong><p class="jt-chat-welcome-tagline">Your Style, Your Choice. ❤️</p><p>I'm JUPTEE AI, your personal shopping assistant. I can help you explore collections, find your size, check prices and place orders.</p><p>What would you like to explore today?</p></div></div>
-        <div class="jt-chat-quick">
-          <button type="button" data-action="browse"><span aria-hidden="true">🛍️</span><span>Browse Products</span></button>
-          <button type="button" data-action="size"><span aria-hidden="true">📏</span><span>Size Guide</span></button>
-          <button type="button" data-action="prices"><span aria-hidden="true">💰</span><span>Check Prices</span></button>
-          <button type="button" data-action="delivery"><span aria-hidden="true">🚚</span><span>Delivery Information</span></button>
-          <button type="button" data-action="order"><span aria-hidden="true">📦</span><span>Place an Order</span></button>
+      <div class="jt-chat-stream" role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions text">
+        <div class="jt-chat-msg assistant jt-chat-welcome-row"><img class="jt-chat-avatar" src="${escapeHtml(brandImage)}" alt=""><div class="jt-chat-bubble jt-chat-welcome"><strong>👋 Welcome to JUPTEE!</strong><p class="jt-chat-welcome-tagline">Your Style, Your Choice.</p><p>I'm your JUPTEE shopping assistant. I can help you find a style, compare verified prices, and check sizes.</p></div></div>
+        <div class="jt-chat-quick" aria-label="Quick questions">
+          <button type="button" data-query="Help me find my size"><span>📏</span>Find my size</button>
+          <button type="button" data-query="Show products under ৳500"><span>৳</span>Under ৳500</button>
+          <button type="button" data-query="Show new arrivals">New arrivals</button>
+          <button type="button" data-query="Show best sellers">Best sellers</button>
+          <button type="button" data-query="How can I track my order?">Track order</button>
         </div>
+        <details class="jt-chat-filters">
+          <summary>Refine by size and price</summary>
+          <div class="jt-chat-filter-content">
+            <span class="jt-chat-filter-label">Size</span>
+            <div class="jt-chat-filter-sizes">${['S', 'M', 'L', 'XL', 'XXL'].map(size => `<button type="button" data-filter-size="${size}" aria-pressed="false">${size}</button>`).join('')}</div>
+            <label>Min price <input data-filter-min type="number" min="0" max="100000" inputmode="numeric" placeholder="৳0"></label>
+            <label>Max price <input data-filter-max type="number" min="0" max="100000" inputmode="numeric" placeholder="No limit"></label>
+            <label class="jt-chat-range-label">Maximum <span data-filter-label>Any price</span><input data-filter-range type="range" min="0" max="20000" step="100" value="20000"></label>
+            <div class="jt-chat-size-tools"><button type="button" data-size-helper>Find my size</button><button type="button" data-size-chart>View size chart</button></div>
+          </div>
+        </details>
       </div>
       <form class="jt-chat-composer">
-        <textarea name="message" rows="1" maxlength="1200" aria-label="Write a message" placeholder="Ask in English, বাংলা or Banglish…"></textarea>
+        <textarea name="message" rows="1" maxlength="1200" aria-label="Write a message" placeholder="Ask about styles, sizes or prices…"></textarea>
         <button class="jt-chat-send" type="submit" aria-label="Send message">↑</button>
       </form>
-      <div class="jt-chat-privacy">Order details stay in the secure order form, not the AI conversation.</div>
+      <div class="jt-chat-privacy">Please don’t share private or payment information in chat.</div>
     </section>`;
+  const stream = root.querySelector('.jt-chat-stream');
+  if (state.history.length) {
+    root.classList.add('jt-chat-has-history');
+    for (const message of state.history) addMessage(message.role, message.content, false);
+  }
   root.querySelector('.jt-chat-launch').addEventListener('click', () => toggleChat());
   root.querySelector('.jt-chat-close').addEventListener('click', () => toggleChat(false));
+  root.querySelector('.jt-chat-minimize').addEventListener('click', () => toggleChat(false));
+  root.querySelector('.jt-chat-clear').addEventListener('click', clearChat);
   const composer = root.querySelector('.jt-chat-composer');
   composer.addEventListener('submit', sendMessage);
   composer.elements.message.addEventListener('keydown', event => {
@@ -270,7 +429,6 @@ function renderWidget() {
     }
   });
   root.querySelector('.jt-chat-quick').addEventListener('click', quickAction);
-  const stream = root.querySelector('.jt-chat-stream');
   stream.addEventListener('scroll', () => {
     state.followLatest = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 48;
   }, { passive: true });
@@ -282,11 +440,149 @@ function renderWidget() {
       composer.requestSubmit();
       return;
     }
+    const filterSize = event.target.closest('[data-filter-size]');
+    if (filterSize) {
+      const size = filterSize.dataset.filterSize;
+      state.filters.size = state.filters.size.includes(size)
+        ? state.filters.size.filter(value => value !== size)
+        : [...state.filters.size, size];
+      filterSize.setAttribute('aria-pressed', String(state.filters.size.includes(size)));
+      filterSize.classList.toggle('selected', state.filters.size.includes(size));
+      return;
+    }
+    const minFilter = event.target.closest('[data-filter-min]');
+    const maxFilter = event.target.closest('[data-filter-max]');
+    const rangeFilter = event.target.closest('[data-filter-range]');
+    if (minFilter || maxFilter || rangeFilter) {
+      updatePriceFilters(event.target);
+      return;
+    }
+    const productSize = event.target.closest('[data-chat-size]');
+    if (productSize) {
+      const card = productSize.closest('[data-chat-product]');
+      card.querySelectorAll('[data-chat-size]').forEach(button => {
+        const selected = button === productSize;
+        button.classList.toggle('selected', selected);
+        button.setAttribute('aria-pressed', String(selected));
+      });
+      card.querySelector('[data-add-chat]').dataset.variantId = productSize.dataset.variantId;
+      card.querySelector('[data-add-chat]').disabled = false;
+      return;
+    }
+    const addButton = event.target.closest('[data-add-chat]');
+    if (addButton) {
+      const addToCart = window.jupteeChatAddToCart;
+      if (typeof addToCart !== 'function') {
+        console.error('The storefront cart integration is unavailable.');
+        addMessage('assistant', 'The bag is unavailable right now. Please open the product page to add this item.');
+        return;
+      }
+      if (!addToCart(addButton.dataset.productId, addButton.dataset.variantId)) {
+        addMessage('assistant', 'This option is no longer available. Please refresh the product list and try again.');
+      }
+      return;
+    }
+    if (event.target.closest('[data-retry-chat]')) {
+      const form = root.querySelector('.jt-chat-composer');
+      sendMessage({ preventDefault() {}, currentTarget: form, retry: true });
+      return;
+    }
+    if (event.target.closest('[data-size-helper]')) {
+      openSizeHelper();
+      return;
+    }
+    if (event.target.closest('[data-size-chart]')) {
+      openSizeChart();
+      return;
+    }
     orderAction(event);
   });
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && state.open) toggleChat(false);
+  stream.addEventListener('input', event => {
+    if (event.target.matches('[data-filter-min],[data-filter-max],[data-filter-range]')) updatePriceFilters(event.target);
   });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && state.open && !root.querySelector('.jt-chat-size-dialog[open]')) toggleChat(false);
+    if (event.key === 'Tab' && state.open) trapFocus(event);
+  });
+  let dragStart;
+  root.querySelector('.jt-chat-handle').addEventListener('pointerdown', event => { dragStart = event.clientY; });
+  root.querySelector('.jt-chat-handle').addEventListener('pointerup', event => {
+    if (dragStart !== undefined && event.clientY - dragStart > 50) toggleChat(false);
+    dragStart = undefined;
+  });
+  updateVisualViewport();
+  window.visualViewport?.addEventListener('resize', updateVisualViewport);
+  window.visualViewport?.addEventListener('scroll', updateVisualViewport);
+}
+
+function trapFocus(event) {
+  const panel = root.querySelector('.jt-chat-panel');
+  if (!panel) return;
+  const focusable = [...panel.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(element => !element.hidden && element.getClientRects().length > 0);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function clearChat() {
+  state.history = [];
+  state.lastUserMessage = '';
+  state.pendingOrder = null;
+  state.filters = { size: [], minPrice: null, maxPrice: null };
+  try {
+    sessionStorage.removeItem(chatHistoryKey);
+  } catch (error) {
+    console.error('Could not clear the saved shopping assistant conversation.', error);
+  }
+  root.querySelectorAll('.jt-chat-msg:not(.jt-chat-welcome-row), .jt-chat-suggestions, .jt-chat-order, .jt-chat-review')
+    .forEach(element => element.remove());
+  root.querySelectorAll('[data-filter-size]').forEach(button => {
+    button.classList.remove('selected');
+    button.setAttribute('aria-pressed', 'false');
+  });
+  root.querySelector('[data-filter-min]').value = '';
+  root.querySelector('[data-filter-max]').value = '';
+  root.querySelector('[data-filter-range]').value = '20000';
+  root.querySelector('[data-filter-label]').textContent = 'Any price';
+  root.classList.remove('jt-chat-has-history');
+}
+
+function updatePriceFilters(input) {
+  const minField = root.querySelector('[data-filter-min]');
+  const maxField = root.querySelector('[data-filter-max]');
+  const range = root.querySelector('[data-filter-range]');
+  if (input.matches('[data-filter-min]')) {
+    state.filters.minPrice = minField.value ? Math.min(100000, Math.max(0, Number(minField.value))) : null;
+    if (state.filters.minPrice !== null) minField.value = String(state.filters.minPrice);
+  }
+  if (input.matches('[data-filter-max]')) {
+    state.filters.maxPrice = maxField.value ? Math.min(100000, Math.max(0, Number(maxField.value))) : null;
+    if (state.filters.maxPrice !== null) maxField.value = String(state.filters.maxPrice);
+    range.value = String(Math.min(Number(range.max), state.filters.maxPrice ?? Number(range.max)));
+  }
+  if (input.matches('[data-filter-range]')) {
+    const max = Number(range.value);
+    state.filters.maxPrice = max >= Number(range.max) ? null : max;
+    maxField.value = state.filters.maxPrice ?? '';
+  }
+  root.querySelector('[data-filter-label]').textContent = state.filters.maxPrice === null
+    ? 'Any price'
+    : `Up to ৳${state.filters.maxPrice.toLocaleString('en-US')}`;
+}
+
+function updateVisualViewport() {
+  const viewport = window.visualViewport;
+  if (!viewport) return;
+  root.style.setProperty('--jt-visual-height', `${viewport.height}px`);
+  root.style.setProperty('--jt-visual-top', `${viewport.offsetTop}px`);
 }
 
 async function loadStoreData() {
@@ -314,12 +610,14 @@ async function loadStoreData() {
 
 async function toggleChat(force) {
   state.open = typeof force === 'boolean' ? force : !state.open;
+  if (state.open) state.seen = true;
   const panel = root.querySelector('.jt-chat-panel');
   const launch = root.querySelector('.jt-chat-launch');
   panel.hidden = !state.open;
   launch.hidden = state.open;
+  launch.querySelector('.jt-chat-unread').hidden = state.seen;
   launch.setAttribute('aria-expanded', String(state.open));
-  launch.setAttribute('aria-label', `${state.open ? 'Close' : 'Open'} JUPTEE shopping assistant`);
+  launch.setAttribute('aria-label', `${state.open ? 'Close' : 'Open'} JUPTEE shopping assistant${state.seen ? '' : ', new message'}`);
   if (state.open) {
     await loadStoreData();
     root.querySelector('textarea[name="message"]')?.focus();
@@ -328,12 +626,35 @@ async function toggleChat(force) {
   }
 }
 
+export function openChat() {
+  return toggleChat(true);
+}
+
 function configuredFees() {
   return state.settings?.deliveryFees || { dhaka: 80, subcity: 100, out: 130 };
 }
 
 function quickAction(event) {
   const button = event.target.closest('[data-action]');
+  const queryButton = event.target.closest('[data-query]');
+  if (queryButton) {
+    const query = queryButton.dataset.query;
+    if (query === 'Help me find my size') {
+      openSizeHelper();
+      return;
+    }
+    if (query === 'How can I track my order?') {
+      addMessage('user', query);
+      addMessage('assistant', state.settings?.supportPhone
+        ? `Order tracking is not connected yet. Please contact JUPTEE at ${state.settings.supportPhone} with your order ID.`
+        : 'Order tracking is not connected yet. Please contact JUPTEE support with your order ID.');
+      return;
+    }
+    const input = root.querySelector('.jt-chat-composer').elements.message;
+    input.value = query;
+    root.querySelector('.jt-chat-composer').requestSubmit();
+    return;
+  }
   if (!button) return;
   const action = button.dataset.action;
   if (action === 'browse') {
@@ -364,7 +685,7 @@ function quickAction(event) {
 }
 
 function addBrowseReply() {
-  addMessage('assistant', `👋 **Welcome to JUPTEE! ❤️**
+  const row = addMessage('assistant', `👋 **Welcome to JUPTEE! ❤️**
 
 Explore our stylish clothing collections, designed to make your everyday look more special.
 
@@ -378,6 +699,7 @@ Our collection includes:
 - 👔 Polo T-shirts
 
 Discover your favourite style and make it yours! Visit our online store to explore the collection.`);
+  addProductCards(state.products, row.querySelector('.jt-chat-bubble'));
 }
 
 function addSizeGuideReply() {
@@ -524,26 +846,88 @@ function showCatalog(language = 'en') {
     addMessage('assistant', 'There are no products in the currently published catalog. Please check back soon or contact JUPTEE support.', false);
     return;
   }
-  const items = state.products.slice(0, 8).map(product => {
-    const available = product.variants.filter(variant => variant.stock > 0);
-    const minPrice = available.length ? Math.min(...available.map(variant => variant.unitPrice)) : null;
-    const stockText = language === 'bn'
-      ? available.length ? `${available.length}টি রং/সাইজের অপশন আছে` : 'এখন স্টকে নেই'
-      : language === 'banglish'
-        ? available.length ? `${available.length} ta color/size option ache` : 'Ekhon stock-e nei'
-        : available.length ? `${available.length} available color/size option${available.length === 1 ? '' : 's'}` : 'Currently out of stock';
-    const priceText = minPrice === null
-      ? language === 'bn' ? 'কোনো স্টকে থাকা ভ্যারিয়েন্ট নেই' : language === 'banglish' ? 'Stock-e variant nei' : 'No available variants'
-      : `${language === 'bn' ? 'শুরু' : language === 'banglish' ? 'Shuru' : 'From'} ${money(minPrice)}`;
-    const image = product.images?.[0] || '/assets/juptee-favicon.png';
-    const imageUrl = window.jupteeAssetUrl ? window.jupteeAssetUrl(image) : image;
-    return `<article class="jt-chat-product"><img src="${escapeHtml(imageUrl)}" alt="" onerror="this.onerror=null;this.src='${escapeHtml(brandImage)}'"><div><strong>${escapeHtml(product.name)}</strong><span>${escapeHtml(priceText)} · ${escapeHtml(stockText)}</span></div></article>`;
-  }).join('');
-  const title = language === 'bn' ? 'প্রকাশিত পণ্য ও বর্তমান দাম' : language === 'banglish' ? 'Published product ar current price' : 'Published products &amp; current prices';
-  const promotion = state.settings?.promotions
-    ? `<p>${escapeHtml(language === 'bn' ? 'বর্তমান অফার (তথ্য)' : language === 'banglish' ? 'Current offer (informational)' : 'Current offer (informational only)')}: ${escapeHtml(state.settings.promotions)}</p>`
-    : '';
-  addHtmlMessage(`<b>${title}</b>${promotion}${items}<p><a class="jt-chat-support" href="#shop">${language === 'bn' ? 'সব পণ্য দেখুন' : language === 'banglish' ? 'Shob product dekhun' : 'Browse the collection'}</a></p>`);
+  const row = addMessage('assistant', language === 'bn' ? 'প্রকাশিত পণ্য ও বর্তমান দাম' : language === 'banglish' ? 'Published product ar current price' : 'Published products and current prices');
+  addProductCards(state.products, row.querySelector('.jt-chat-bubble'));
+}
+
+async function readAssistantStream(response) {
+  const row = document.createElement('div');
+  row.className = 'jt-chat-msg assistant';
+  const avatar = document.createElement('img');
+  avatar.className = 'jt-chat-avatar';
+  avatar.src = brandImage;
+  avatar.alt = '';
+  const bubble = document.createElement('div');
+  bubble.className = 'jt-chat-bubble';
+  row.append(avatar, bubble);
+  root.querySelector('.jt-chat-stream').append(row);
+  let reply = '';
+  let result;
+  let eventName = '';
+  let dataLines = [];
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = '';
+  const dispatch = () => {
+    if (!dataLines.length) {
+      eventName = '';
+      return;
+    }
+    const data = JSON.parse(dataLines.join('\n'));
+    if (eventName === 'delta') {
+      reply += data.text;
+      bubble.textContent = reply;
+    } else if (eventName === 'done' || eventName === 'fallback') {
+      result = data;
+      reply = data.reply;
+      bubble.textContent = reply;
+    }
+    eventName = '';
+    dataLines = [];
+    scrollToBottom();
+  };
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+      let newline;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline).replace(/\r$/, '');
+        buffer = buffer.slice(newline + 1);
+        if (!line) dispatch();
+        else if (line.startsWith('event:')) eventName = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      }
+      if (chunk.done) break;
+    }
+    if (buffer.startsWith('data:')) dataLines.push(buffer.slice(5).trim());
+    dispatch();
+    if (!result || typeof result.reply !== 'string' || !Array.isArray(result.products)) {
+      throw new Error('The streaming shopping assistant returned an incomplete response.');
+    }
+    bubble.innerHTML = formatAssistantText(result.reply);
+    state.history.push({ role: 'assistant', content: result.reply });
+    state.history = state.history.slice(-10);
+    try {
+      sessionStorage.setItem(chatHistoryKey, JSON.stringify(state.history));
+    } catch (error) {
+      console.error('Could not save the shopping assistant conversation.', error);
+    }
+    const timestamp = new Date();
+    const time = document.createElement('time');
+    time.className = 'jt-chat-time';
+    time.dateTime = timestamp.toISOString();
+    time.textContent = timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    row.append(time);
+    addSuggestions(state.lastUserMessage, result.reply);
+    addProductCards(result.products, bubble);
+    markUnread();
+  } catch (error) {
+    row.remove();
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 async function sendMessage(event) {
@@ -551,44 +935,52 @@ async function sendMessage(event) {
   if (state.loading) return;
   const form = event.currentTarget;
   const input = form.elements.message;
-  const message = input.value.trim();
+  const retry = event.retry === true;
+  const message = retry ? state.lastUserMessage : input.value.trim();
   if (!message) return;
-  input.value = '';
+  if (!retry) input.value = '';
   const language = messageLanguage(message);
-  addMessage('user', message);
+  if (!retry) addMessage('user', message);
   const lower = message.toLowerCase();
-  if (answerKnownQuestion(message, language)) return;
-  if (/(price|cost|দাম|দাম কত|\bkoto\b|\bdam\b)/i.test(lower) && state.products.length) {
-    showCatalog(language);
-    return;
-  }
+  if (!retry && answerKnownQuestion(message, language)) return;
   state.loading = true;
   root.querySelector('.jt-chat-send').disabled = true;
   showTyping(true);
   try {
-    const response = await fetch('/api/chatbot', {
+    const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: state.history.slice(-10) })
+      body: JSON.stringify({ messages: state.history.slice(-10), filters: state.filters, stream: true })
     });
-    const result = await response.json().catch(() => ({}));
+    const streamed = response.headers.get('content-type')?.includes('text/event-stream');
+    const result = streamed ? {} : await response.json().catch(() => ({}));
+    if (response.status === 429) {
+      addMessage('assistant', result.error || 'Please wait a moment before sending another chat message.');
+      return;
+    }
     if (!response.ok) {
       const message = response.status === 522
         ? 'Cloudflare cannot reach the JUPTEE site server right now (522). Please try again later.'
         : result.error || `The assistant could not respond (${response.status}).`;
       throw new Error(message);
     }
-    addMessage('assistant', result.reply);
+    if (streamed) {
+      await readAssistantStream(response);
+      return;
+    }
+    if (typeof result.reply !== 'string' || !Array.isArray(result.products)) throw new Error('The shopping assistant returned an invalid response.');
+    const row = addMessage('assistant', result.reply);
+    addProductCards(result.products, row.querySelector('.jt-chat-bubble'));
   } catch (error) {
     console.error('Shopping assistant request failed:', error);
-    const message = location.protocol === 'file:'
-      ? 'This local file preview cannot connect to JUPTEE’s Cloudflare AI service. Open https://juptee.shop in your browser to chat with JUPTEE AI.'
-      : error.message.includes('(522)')
-        ? error.message
-        : state.settings?.supportPhone
-          ? `I’m having trouble responding right now. Please try again, or call JUPTEE support at ${state.settings.supportPhone}.`
-          : 'I’m having trouble responding right now. Please try again or browse the collection.';
-    addMessage('assistant', message);
+    const filters = parseChatQuery(message, state.filters);
+    const localMatches = searchProducts(state.products, message, filters);
+    if (localMatches.length) {
+      const row = addMessage('assistant', 'The assistant is temporarily unavailable, but I found these matching items in the published JUPTEE catalog.');
+      addProductCards(localMatches, row.querySelector('.jt-chat-bubble'));
+    } else {
+      addHtmlMessage(`<p class="jt-chat-error">I’m having trouble responding right now. Please try again or browse the collection.</p><div class="jt-chat-error-actions"><button type="button" data-retry-chat>Retry</button><a href="#shop">Browse collection</a></div>`);
+    }
   } finally {
     state.loading = false;
     showTyping(false);

@@ -1,6 +1,6 @@
 # JUPTEE order system deployment
 
-The Cloudflare Pages project and D1 database already exist. The production Pages project is `juptee-shop`; its D1 database is `juptee_shop` with ID `28e3769b-3016-4001-b911-f8b963d314e8`. The database currently has no tables, and all three repository migrations are pending, so order/catalog APIs that need D1 are not ready until the schema is applied. No production migration was run during this investigation.
+The Cloudflare Pages project and D1 database already exist. The production Pages project is `juptee-shop`; its D1 database is `juptee_shop` with ID `28e3769b-3016-4001-b911-f8b963d314e8`. The database currently has no tables, and the repository migrations are pending, so order/catalog APIs that need D1 are not ready until the schema is applied. No production migration was run during this investigation.
 
 ## 1. Prepare Cloudflare Pages and D1
 
@@ -28,7 +28,7 @@ The Cloudflare Pages project and D1 database already exist. The production Pages
    ```
 
 7. `www.juptee.shop` is currently attached to the Pages project; add `juptee.shop` as a custom domain and enable HTTPS if the apex domain is intended. Keep production and preview environments separate; do not point preview deployments at the production order database.
-8. Add Cloudflare rate-limiting rules for `POST /api/orders` and `POST /api/chatbot` to reduce automated order abuse and unexpected AI spend. Set conservative limits appropriate to expected traffic and monitor them during launch.
+8. Add Cloudflare rate-limiting rules for `POST /api/orders`, `POST /api/chat`, and legacy `POST /api/chatbot` to reduce automated order abuse and unexpected AI spend. Both chat routes also enforce a per-client D1 limit (20 requests per minute by default); set `CHAT_RATE_LIMIT` if the default needs adjustment.
 
 The migration creates the schema and initializes the business notification contacts to `+8801061103327` and `hellojuptee@gmail.com`. It deliberately does not create products or inventory.
 
@@ -91,13 +91,38 @@ Set `CLOUDINARY_CLOUD_NAME` as a Pages environment variable. The [Free plan](htt
 
 ## 3. Configure the AI shopping assistant
 
-The floating assistant uses the published D1 catalog and calls OpenAI only from a Pages Function. Create an OpenAI API key with API billing enabled, then add it to Pages secrets:
+The floating assistant is loaded only when a customer opens it. It reads the published D1 catalog and calls Gemini or OpenAI only from a Pages Function. Gemini is preferred when both provider keys are configured. The primary endpoint is `POST /api/chat`; `POST /api/chatbot` remains available for compatibility, and `GET /api/chatbot` still supplies catalog/settings data. Both chat routes return `{ reply, products, suggestions }`. Create a Gemini API key in Google AI Studio and add it as a Pages secret:
 
 ```powershell
-npx wrangler pages secret put OPENAI_API_KEY --project-name juptee-shop
+npx wrangler pages secret put GEMINI_API_KEY --project-name juptee-shop
 ```
 
-Optionally set `OPENAI_MODEL` as a Pages environment variable (default: `gpt-4o-mini`). OpenAI API usage is billed separately from ChatGPT subscriptions; per-message cost depends on model and token use. Add a spend limit/alert in the OpenAI platform and a Cloudflare rate limit for `POST /api/chatbot`. Do not put the key in frontend code or Git.
+Set these Pages environment variables/secrets:
+
+| Name | Type | Purpose |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | Secret (recommended) | Gemini API credential; preferred over OpenAI when both are set |
+| `GEMINI_MODEL` | Variable (optional) | Gemini model name; defaults to `gemini-2.5-flash` |
+| `OPENAI_API_KEY` | Secret (optional) | OpenAI API credential used when no Gemini key is configured |
+| `OPENAI_MODEL` | Variable (optional) | OpenAI model name; defaults to `gpt-4o-mini` |
+| `CHAT_RATE_LIMIT` | Variable (optional) | Per-client requests per minute, 1–100; defaults to `20` |
+
+`.env.example` lists these names for reference; Cloudflare Pages does not load that file automatically. Never commit a real key or put it in browser code. Revoke any key shared in chat, screenshots, or source control and use a newly generated key. Gemini and OpenAI API use may be billed separately from their consumer subscriptions; check provider pricing and set usage alerts. Monitor Cloudflare's built-in limit and edge rate-limit rules for both chat routes.
+
+The chat endpoint validates JSON and message length, removes phone/email values before any provider request, applies a 15-second provider deadline with up to two exponential-backoff retries, and logs provider failures server-side. It parses size, color, category, and price filters and passes the verified matching D1 products to the model. The widget requests streaming replies; the final stream event carries the same `reply`, `products`, and `suggestions` data shape. When the provider is unavailable, the endpoint searches the catalog and streams or returns real product cards instead of a generic error. It enforces a database-backed per-client rate limit; the client identifier is stored only as a SHA-256 hash. Apply migration `0004_chat_rate_limits.sql` before deploying this behavior.
+
+To run a local preview with an isolated local D1 database (not production):
+
+```powershell
+npx wrangler d1 migrations apply juptee_shop --local
+npx wrangler pages dev .
+```
+
+With published products in that local database, leave both provider keys unset to simulate provider failure and verify the local product-search response. Alternatively, use an invalid key in a staging-only Pages environment to exercise timeout/retry behavior; do not change production credentials to test failures. Unit tests for query parsing and fallback search run with:
+
+```powershell
+node --test tests/chat-search.test.mjs tests/access-middleware.test.mjs
+```
 
 The assistant's order form submits to the existing `/api/orders` endpoint. The AI provider does not receive order form fields; email addresses and phone numbers in chat text are redacted before an AI request, but customers should still avoid typing private details into free-form chat. The assistant confirms an order only after the existing order API returns a saved order ID.
 
@@ -107,13 +132,15 @@ The protected dashboard's **Store & assistant settings** panel configures Dhaka 
 
 The checkout and chatbot order form use the bilingual Bangladesh Locations Dataset in `assets/data/bangladesh-locations.json`, derived from [HedaetShahriar/bangladesh-locations-dataset](https://github.com/HedaetShahriar/bangladesh-locations-dataset) v1.5.0 at revision `0d3116a7f59be5b2450742432805df2ab505043e`. This snapshot contains all 8 divisions, 64 districts, 502 upazilas, and 74 thanas. The location selector loads this static same-origin asset, so it also works on static previews without Cloudflare Functions; server-side order validation uses the same dataset through `/api/locations` and the order API. It does not rely on a third-party runtime service. The dataset is MIT-licensed; see `assets/data/LICENSE-bangladesh-locations.txt`. Its maintainers note that the public-source dataset is not an official government publication and may contain name or spelling errors; verify customer-facing labels before launch.
 
-Apply the pending schema migration to the existing production D1 database before deploying this version. Back up the database first:
+Apply the pending schema migrations to the existing production D1 database before deploying this version. Back up the database first:
 
 ```powershell
 npx wrangler d1 migrations apply juptee_shop --remote
 ```
 
 Migration `0003_order_locations.sql` adds division, district, upazila/thana, and delivery-instruction fields while preserving prior orders. New checkout submissions send location IDs; the order API verifies that the district belongs to the selected division and the upazila/thana belongs to that district, then saves canonical location names. The server applies the configured Dhaka fee to orders in Dhaka district and the configured outside fee to every other district. The former sub-city fee setting remains in the admin form for compatibility but is not used by checkout. Admin orders, business notifications, and the customer confirmation display the saved location and address.
+
+Migration `0004_chat_rate_limits.sql` creates the hashed-client request counter used by `POST /api/chat`. Apply all migrations before enabling the new chat endpoint.
 
 The middleware verifies the Access JWT signature, issuer, audience, and expiry before serving `/admin` or the admin APIs. Test that an unauthenticated request to both `/admin/` and `/api/admin/orders` is rejected before sharing the dashboard URL.
 
@@ -166,7 +193,7 @@ Before using production customer data:
 7. Confirm unauthenticated dashboard and admin API requests are blocked, and an authorized administrator can update an order status and notification contacts.
 8. From the protected dashboard, save a draft, test a repository path, upload multiple files (including drag/drop), replace and remove Cloudinary photos, reorder the primary photo, and publish a verified product. Confirm optimized images and exact color/size stock appear on the storefront, and that broken image URLs fall back safely. Confirm a disabled or sold-out variation cannot be added to the bag.
 9. Configure chat delivery fees, size chart, FAQs, promotions, and support number in the admin panel. Confirm storefront checkout, chatbot delivery estimates, and the order API all use the same configured fee.
-10. Set the OpenAI secret in staging, then test English, Bangla, and Banglish questions about published products, unavailable items, current prices, offers, sizes, and FAQs. Confirm missing AI configuration produces an explicit unavailable message while catalog actions and order flow still work.
+10. Set the OpenAI secret in staging, then test English, Bangla, and Banglish questions about published products, unavailable items, current prices, offers, sizes, and FAQs. Remove the key in staging and confirm product questions return verified local-search results while catalog actions and the order flow still work.
 11. Test the order assistant: submit valid details, edit/cancel the summary, confirm a successful order and order ID, then simulate an API/network failure and retry. Confirm no success message is shown before the backend saves the order, duplicate retries do not decrement stock twice, and personal order fields are not sent to the AI provider.
 12. Test the location selector: check all 8 divisions, all 64 districts, and the upazila/thana list for each district; search in English and Bangla; verify changing a division clears district and thana, and changing a district clears thana. Confirm an incomplete location is blocked in the browser and invalid or mismatched location IDs are rejected by the order API.
 13. Submit a test order from Dhaka district and one from another district; verify the server-applied fees (default ৳80 and ৳130), saved division/district/thana, both address lines, phone, and delivery instructions in D1, admin, notifications, and customer confirmation. Confirm older orders still display their stored legacy address.
