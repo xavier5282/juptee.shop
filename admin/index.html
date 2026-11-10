@@ -7,10 +7,10 @@
   <meta name="theme-color" content="#f8f7f4" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1d1e1b" media="(prefers-color-scheme: dark)">
   <title>Order dashboard — JUPTEE</title>
-  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="icon" type="image/png" sizes="64x64" href="/assets/juptee-favicon.png">
-  <link rel="apple-touch-icon" href="/assets/juptee-favicon.png">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" type="image/x-icon" href="../assets/favicon.ico">
+  <link rel="icon" type="image/png" sizes="64x64" href="../assets/juptee-favicon.png">
+  <link rel="apple-touch-icon" href="../assets/juptee-favicon.png">
+  <link rel="stylesheet" href="../style.css">
   <style>
     body{background:var(--bg)}
     .admin-shell{max-width:1180px;margin:auto;padding:28px 20px 70px}
@@ -90,8 +90,8 @@
 <body>
   <main class="admin-shell">
     <header class="admin-head">
-      <div><a class="admin-brand" href="/">JUPTEE</a><p>Private order management</p></div>
-      <a class="btn alt" href="/">View storefront</a>
+      <div><a class="admin-brand" href="../">JUPTEE</a><p>Private order management</p></div>
+      <a class="btn alt" href="../">View storefront</a>
     </header>
     <section>
       <span class="eyebrow">JUPTEE · ADMIN</span>
@@ -99,6 +99,7 @@
       <p class="admin-intro">Review saved orders, update their status, and manage notification recipients.</p>
     </section>
     <p class="admin-warning">Customer information is private. Keep this dashboard protected by your Cloudflare Access policy and do not share access links.</p>
+    <p class="admin-warning" id="static-host-warning" hidden>Backend features are unavailable on GitHub Pages. Product management, orders, uploads, and settings require Cloudflare Pages with the API and D1 database configured.</p>
     <div class="admin-tabs" role="tablist" aria-label="Dashboard sections">
       <button class="admin-tab" id="orders-tab" role="tab" aria-selected="true" aria-controls="orders-panel">Orders</button>
       <button class="admin-tab" id="products-tab" role="tab" aria-selected="false" aria-controls="products-panel">Products &amp; photos</button>
@@ -189,6 +190,6 @@
       <p class="admin-feedback" id="settings-feedback" role="status"></p>
     </section>
   </main>
-  <script type="module" src="/admin/dashboard.js"></script>
+  <script type="module" src="../admin/dashboard.js"></script>
 </body>
 </html>

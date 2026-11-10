@@ -7,6 +7,13 @@ const productForm = $('#product-form');
 const productList = $('#product-list');
 const imageSlots = $('#image-slots');
 const variantRows = $('#variant-rows');
+const githubRepoPath = location.hostname.endsWith('.github.io')
+  ? location.pathname.split('/').filter(Boolean)[0] || ''
+  : '';
+const sitePath = path => {
+  if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(path)) return path;
+  return githubRepoPath ? `/${githubRepoPath}/${path.replace(/^\/+/, '')}` : path;
+};
 const statuses = ['new', 'confirmed', 'processing', 'shipped', 'completed', 'cancelled'];
 const imageLabels = ['Front', 'Back', 'Side', 'Detail'];
 let products = [];
@@ -28,22 +35,23 @@ function money(value) {
 async function api(url, options = {}) {
   const headers = { ...options.headers };
   if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
-  const response = await fetch(url, {
+  const response = await fetch(sitePath(url), {
     credentials: 'same-origin',
     ...options,
     headers
   });
+
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status}).`);
   return result;
 }
 
 function productCard(product) {
-  const image = product.images?.[0]?.url || '';
+  const image = product.images?.[0]?.url ? sitePath(product.images[0].url) : '';
   const variants = product.variants || [];
   const stock = variants.reduce((total, variant) => total + Number(variant.stock || 0), 0);
   return `<article class="product-admin-card">
-    <img src="${escapeHtml(image)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='/assets/juptee-favicon.png'">
+    <img src="${escapeHtml(image)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${sitePath('/assets/juptee-favicon.png')}'">
     <div><strong>${escapeHtml(product.title)}</strong><p>${escapeHtml(product.id)} · ${money(product.salePrice || product.price)}</p><p>${product.active ? 'Published' : 'Draft'} · ${variants.length} variations · ${stock} stock</p></div>
     <button class="btn alt" type="button" data-edit-product="${escapeHtml(product.id)}">Edit</button>
   </article>`;
@@ -66,13 +74,13 @@ function renderImageSlots() {
   imageSlots.innerHTML = imageLabels.map((label, index) => {
     const image = currentImages[index];
     const path = imagePaths[index] || (image?.source === 'local' ? image.ref : '');
-    const preview = previewUrls[index] || image?.url || '';
+    const preview = previewUrls[index] || (image?.url ? sitePath(image.url) : '');
     const status = selectedFiles[index]
       ? `${selectedFiles[index].name} · ready to upload.`
       : image ? (image.source === 'local' ? 'Repository image kept.' : 'Current image kept unless replaced.') : 'No image selected.';
     return `<div class="image-slot" data-image-drop="${index}">
       <strong>${escapeHtml(label)} photo${index === 0 ? ' · Primary' : ''}</strong>
-      <img src="${escapeHtml(preview)}" alt="${escapeHtml(image ? `${label} product photo` : `Preview for ${label} photo`)}" data-image-preview="${index}" onerror="this.onerror=null;this.src='/assets/juptee-favicon.png'">
+      <img src="${escapeHtml(preview)}" alt="${escapeHtml(image ? `${label} product photo` : `Preview for ${label} photo`)}" data-image-preview="${index}" onerror="this.onerror=null;this.src='${sitePath('/assets/juptee-favicon.png')}'">
       <label>Upload image <input type="file" accept="image/jpeg,image/png,image/webp" data-image-file="${index}"></label>
       <label>Repository image path
         <input type="text" data-image-path="${index}" value="${escapeHtml(path)}" placeholder="/assets/products/product-name.webp">
@@ -136,7 +144,7 @@ function setImageFile(index, file) {
 function uploadProductImages(formData, onProgress) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open('POST', '/api/admin/product-images');
+    request.open('POST', sitePath('/api/admin/product-images'));
     request.withCredentials = true;
     request.upload.addEventListener('progress', event => {
       if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
@@ -375,7 +383,7 @@ imageSlots.addEventListener('change', event => {
     const pathInput = imageSlots.querySelector(`[data-image-path="${index}"]`);
     if (pathInput) pathInput.value = path;
     const preview = imageSlots.querySelector(`[data-image-preview="${index}"]`);
-    if (preview && path) preview.src = path;
+    if (preview && path) preview.src = sitePath(path);
     productsFeedback.textContent = '';
     productsFeedback.className = 'admin-feedback';
     return;
@@ -398,7 +406,7 @@ imageSlots.addEventListener('change', event => {
     previewUrls[index] = '';
   }
   const preview = imageSlots.querySelector(`[data-image-preview="${index}"]`);
-  if (preview) preview.src = path || currentImages[index]?.url || '';
+  if (preview) preview.src = path ? sitePath(path) : currentImages[index]?.url ? sitePath(currentImages[index].url) : '';
   productsFeedback.textContent = '';
   productsFeedback.className = 'admin-feedback';
 });
@@ -592,4 +600,5 @@ $('#settings-form').addEventListener('submit', async event => {
   }
 });
 
+if (githubRepoPath) $('#static-host-warning').hidden = false;
 loadOrders();
