@@ -408,6 +408,22 @@ For a customized quotation, contact JUPTEE with the quantity and design you have
 
 function answerKnownQuestion(message, language) {
   const lower = message.toLowerCase();
+  if (/(customi[sz](?:e|ation)|personalized|print my own|my own t-?shirt)/i.test(lower)) {
+    const contact = state.settings?.supportPhone || '+8801061103327';
+    addMessage('assistant', `Yes, you can ask JUPTEE about a custom T-shirt. The design, printing, and quantity determine what is possible and the price, so please contact our team at ${contact} for a confirmed quote.`);
+    return true;
+  }
+  if (/(couple t-?shirts?|matching (?:t-?shirts?|tees?))/i.test(lower)) {
+    const coupleProducts = state.products.filter(product =>
+      product.category === 'couple' || product.cat === 'couple' || /couple/i.test(product.name)
+    );
+    if (coupleProducts.length) {
+      addMessage('assistant', `Yes, the live catalog currently has ${coupleProducts.length} couple T-shirt ${coupleProducts.length === 1 ? 'design' : 'designs'}. Use Browse Products to check current prices, sizes, and stock.`);
+    } else {
+      addMessage('assistant', 'Couple T-shirts are part of JUPTEE’s collection, but I can’t confirm currently published designs or stock right now. Please check the shop or contact JUPTEE support before ordering.');
+    }
+    return true;
+  }
   if (/cash on delivery/i.test(lower)) {
     addMessage('assistant', `Yes, **Cash on Delivery** is available. Current delivery charges are **${money(configuredFees().dhaka)}** inside Dhaka and **${money(configuredFees().out)}** outside Dhaka.`);
     return true;
