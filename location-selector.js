@@ -3,16 +3,20 @@
 
   function loadLocations() {
     if (!locationsPromise) {
-      locationsPromise = fetch('/api/locations', { headers: { Accept: 'application/json' } })
+      const locationDataUrl = window.jupteeAssetUrl
+        ? window.jupteeAssetUrl('assets/data/bangladesh-locations.json')
+        : 'assets/data/bangladesh-locations.json';
+      locationsPromise = fetch(locationDataUrl, { headers: { Accept: 'application/json' } })
         .then(async response => {
           if (!response.ok) throw new Error(`Location data request failed (${response.status}).`);
           const data = await response.json();
-          const districts = data.divisions?.flatMap(division => division.districts || []) || [];
+          const divisions = Array.isArray(data.divisions) ? data.divisions : [];
+          const districts = divisions.flatMap(division => division.districts || []);
           const units = districts.flatMap(district => district.upazilas || []);
-          if (data.divisions.length !== 8 || districts.length !== 64 || units.length < 500) {
+          if (divisions.length !== 8 || districts.length !== 64 || units.length < 500) {
             throw new Error('The Bangladesh location dataset is incomplete.');
           }
-          return data.divisions;
+          return divisions;
         })
         .catch(error => {
           locationsPromise = null;

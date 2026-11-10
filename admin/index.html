@@ -7,10 +7,10 @@
   <meta name="theme-color" content="#f8f7f4" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1d1e1b" media="(prefers-color-scheme: dark)">
   <title>Order dashboard — JUPTEE</title>
-  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="icon" type="image/png" sizes="64x64" href="/assets/juptee-favicon.png">
-  <link rel="apple-touch-icon" href="/assets/juptee-favicon.png">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" type="image/x-icon" href="../assets/favicon.ico">
+  <link rel="icon" type="image/png" sizes="64x64" href="../assets/juptee-favicon.png">
+  <link rel="apple-touch-icon" href="../assets/juptee-favicon.png">
+  <link rel="stylesheet" href="../style.css">
   <style>
     :root{color-scheme:light;--bg:#f5f6f2;--bg2:#eef1eb;--tx:#20251f;--tx2:#72776f;--w:#fff;--ln:#e6e9e2;--admin-ink:#20251f;--admin-muted:#72776f;--admin-green:#294e3d;--admin-border:#e6e9e2}
     body{background:var(--bg)}
@@ -133,14 +133,14 @@
   <main class="admin-shell">
     <header class="admin-head">
       <div><a class="admin-brand" href="/">JUPTEE</a><p>Private order management</p></div>
-      <div class="admin-actions"><span class="admin-auth">Secure admin</span><a class="admin-logout" href="/cdn-cgi/access/logout?returnTo=%2Flogin.html">Log out</a><a class="btn alt" href="/">View store</a></div>
+      <a class="btn alt" href="/">View storefront</a>
     </header>
     <section>
       <span class="eyebrow">JUPTEE · STORE MANAGEMENT</span>
       <h1 class="admin-title">Good day, admin <span aria-hidden="true">✦</span></h1>
       <p class="admin-intro">Here’s what’s happening with your store today.</p>
     </section>
-    <p class="admin-warning">Customer information is private. Keep this dashboard protected by Cloudflare Access and do not share access links.</p>
+    <p class="admin-warning">Customer information is private. Keep this dashboard protected by your Cloudflare Access policy and do not share access links.</p>
     <div class="admin-tabs" role="tablist" aria-label="Dashboard sections">
       <button class="admin-tab" id="overview-tab" role="tab" aria-selected="true" aria-controls="overview-panel">Overview</button>
       <button class="admin-tab" id="orders-tab" role="tab" aria-selected="false" aria-controls="orders-panel">Orders</button>
@@ -192,7 +192,7 @@
             <label class="wide">Display order <input name="sortOrder" type="number" min="0" step="1" value="0"></label>
           </div>
           <h3>Product photos</h3>
-          <span class="hint">Use repository paths or upload JPG, PNG, or WebP (up to 6 MB each). Up to four images are supported; all four are required to publish.</span>
+          <span class="hint">Choose a photo from assets/products, enter a repository path, or upload JPG, PNG, or WebP (up to 6 MB each). Up to four images are supported; all four are required to publish.</span>
           <div class="image-slots" id="image-slots"></div>
           <label>Upload multiple photos
             <input id="bulk-images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
@@ -245,6 +245,6 @@
       <p class="admin-feedback" id="settings-feedback" role="status"></p>
     </section>
   </main>
-  <script type="module" src="/admin/dashboard.js"></script>
+  <script type="module" src="../admin/dashboard.js"></script>
 </body>
 </html>
