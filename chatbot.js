@@ -302,7 +302,12 @@ async function loadStoreData() {
     return true;
   } catch (error) {
     console.error('Could not load shopping assistant catalog:', error);
-    addMessage('assistant', 'I can still help with general questions, but the live catalog is temporarily unavailable. Please try again or contact JUPTEE support.', false);
+    const message = location.protocol === 'file:'
+      ? 'This local file preview cannot connect to JUPTEE’s Cloudflare services. Open https://juptee.shop in your browser to use the live catalog and AI assistant.'
+      : error.message.includes('(522)')
+        ? 'Cloudflare cannot reach the JUPTEE site server right now (522). The live catalog is unavailable until the site server responds again.'
+        : 'I can still help with general questions, but the live catalog is temporarily unavailable. Please try again or contact JUPTEE support.';
+    addMessage('assistant', message, false);
     return false;
   }
 }
@@ -567,13 +572,23 @@ async function sendMessage(event) {
       body: JSON.stringify({ messages: state.history.slice(-10) })
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || 'The assistant could not respond.');
+    if (!response.ok) {
+      const message = response.status === 522
+        ? 'Cloudflare cannot reach the JUPTEE site server right now (522). Please try again later.'
+        : result.error || `The assistant could not respond (${response.status}).`;
+      throw new Error(message);
+    }
     addMessage('assistant', result.reply);
   } catch (error) {
     console.error('Shopping assistant request failed:', error);
-    addMessage('assistant', state.settings?.supportPhone
-      ? `I’m having trouble responding right now. Please try again, or call JUPTEE support at ${state.settings.supportPhone}.`
-      : 'I’m having trouble responding right now. Please try again or browse the collection.');
+    const message = location.protocol === 'file:'
+      ? 'This local file preview cannot connect to JUPTEE’s Cloudflare AI service. Open https://juptee.shop in your browser to chat with JUPTEE AI.'
+      : error.message.includes('(522)')
+        ? error.message
+        : state.settings?.supportPhone
+          ? `I’m having trouble responding right now. Please try again, or call JUPTEE support at ${state.settings.supportPhone}.`
+          : 'I’m having trouble responding right now. Please try again or browse the collection.';
+    addMessage('assistant', message);
   } finally {
     state.loading = false;
     showTyping(false);
