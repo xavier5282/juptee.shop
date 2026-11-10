@@ -81,6 +81,15 @@ function renderImageSlots() {
         <button class="btn alt" type="button" data-primary-image="${index}" ${index === 0 ? 'disabled' : ''}>${index === 0 ? 'Primary image' : 'Set as primary'}</button>
         <button class="btn alt" type="button" data-remove-image="${index}">Remove</button>
       </div>
+      <label>Choose an existing product photo
+        <select data-image-asset="${index}">
+          <option value="">Select a photo from assets/products</option>
+          <option value="/assets/products/juptee-products%20(1).jpg" ${path === '/assets/products/juptee-products%20(1).jpg' ? 'selected' : ''}>Reindeer Holiday Tee</option>
+          <option value="/assets/products/juptee-products%20(2).jpg" ${path === '/assets/products/juptee-products%20(2).jpg' ? 'selected' : ''}>Santa &amp; Friends Holiday Tee</option>
+          <option value="/assets/products/juptee-products%20(3).jpg" ${path === '/assets/products/juptee-products%20(3).jpg' ? 'selected' : ''}>Snow Globe Christmas Tee</option>
+          <option value="/assets/products/juptee-products%20(4).jpg" ${path === '/assets/products/juptee-products%20(4).jpg' ? 'selected' : ''}>Christmas Wreath Graphic Tee</option>
+        </select>
+      </label>
       <span class="hint">${escapeHtml(status)} Drop an image here to replace.</span>
     </div>`;
   }).join('');
@@ -113,6 +122,8 @@ function setImageFile(index, file) {
   previewUrls[index] = URL.createObjectURL(file);
   const pathInput = imageSlots.querySelector(`[data-image-path="${index}"]`);
   if (pathInput) pathInput.value = '';
+  const assetSelect = imageSlots.querySelector(`[data-image-asset="${index}"]`);
+  if (assetSelect) assetSelect.value = '';
   const preview = imageSlots.querySelector(`[data-image-preview="${index}"]`);
   if (preview) preview.src = previewUrls[index];
   const hint = imageSlots.querySelector(`[data-image-drop="${index}"] .hint`);
@@ -353,6 +364,22 @@ imageSlots.addEventListener('change', event => {
     if (!setImageFile(index, fileInput.files?.[0])) fileInput.value = '';
     return;
   }
+  const assetSelect = event.target.closest('[data-image-asset]');
+  if (assetSelect) {
+    const index = Number(assetSelect.dataset.imageAsset);
+    const path = assetSelect.value;
+    imagePaths[index] = path;
+    selectedFiles[index] = null;
+    if (previewUrls[index]) URL.revokeObjectURL(previewUrls[index]);
+    previewUrls[index] = '';
+    const pathInput = imageSlots.querySelector(`[data-image-path="${index}"]`);
+    if (pathInput) pathInput.value = path;
+    const preview = imageSlots.querySelector(`[data-image-preview="${index}"]`);
+    if (preview && path) preview.src = path;
+    productsFeedback.textContent = '';
+    productsFeedback.className = 'admin-feedback';
+    return;
+  }
   const pathInput = event.target.closest('[data-image-path]');
   if (!pathInput) return;
   const index = Number(pathInput.dataset.imagePath);
@@ -363,6 +390,8 @@ imageSlots.addEventListener('change', event => {
     return;
   }
   imagePaths[index] = path;
+  const assetPicker = imageSlots.querySelector(`[data-image-asset="${index}"]`);
+  if (assetPicker) assetPicker.value = path;
   if (path) {
     selectedFiles[index] = null;
     if (previewUrls[index]) URL.revokeObjectURL(previewUrls[index]);
