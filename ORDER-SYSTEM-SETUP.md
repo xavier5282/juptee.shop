@@ -48,6 +48,13 @@ For each result, replace or migrate those images from the protected dashboard an
 
 Create Cloudflare Access self-hosted applications for the Pages hostname, restricting access to the paths `/admin*` and `/api/admin/*`. If Cloudflare requires separate applications for those paths, create both and allow only the authorized JUPTEE administrators.
 
+Opening `/admin` without a valid Access token redirects to the public `/login.html`
+sign-in screen. Its **Continue with secure sign-in** button returns to `/admin`, where
+Cloudflare Access handles identity verification; the page does not collect or store a
+separate store password. Keep `/login.html` outside the protected Access path rules,
+while protecting both the dashboard and every `/api/admin/*` endpoint as described above.
+The dashboard's sign-out link uses Cloudflare Access logout.
+
 Set these Pages environment variables in production:
 
 | Variable | Value |

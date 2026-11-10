@@ -10,6 +10,10 @@ const variantRows = $('#variant-rows');
 const statuses = ['new', 'confirmed', 'processing', 'shipped', 'completed', 'cancelled'];
 const imageLabels = ['Front', 'Back', 'Side', 'Detail'];
 let products = [];
+let orders = null;
+let productsLoaded = false;
+let productsError = '';
+let ordersError = '';
 let currentImages = [];
 let selectedFiles = [];
 let imagePaths = [];
@@ -23,6 +27,84 @@ function escapeHtml(value) {
 
 function money(value) {
   return '৳' + Number(value).toLocaleString('en-US');
+}
+
+function dateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function renderOverview() {
+  if (orders === null) {
+    $('#metric-orders').textContent = ordersError ? '—' : '…';
+    $('#metric-sales').textContent = ordersError ? '—' : '…';
+    $('#metric-pending').textContent = ordersError ? '—' : '…';
+    $('#metric-orders-note').textContent = ordersError ? 'Could not load order data' : 'Loading order data…';
+    $('#order-status-list').innerHTML = `<div class="overview-empty">${ordersError ? `Orders unavailable: ${escapeHtml(ordersError)}` : 'Loading order data…'}</div>`;
+    $('#overview-recent').innerHTML = `<div class="overview-empty">${ordersError ? 'Recent orders could not be loaded.' : 'Loading recent orders…'}</div>`;
+    $('#orders-chart').innerHTML = '';
+  } else {
+    const now = new Date();
+    const monthStart = new Date(now);
+    monthStart.setDate(monthStart.getDate() - 30);
+    const validOrders = orders.filter(order => order.status !== 'cancelled');
+    const monthlySales = validOrders.reduce((total, order) => (
+      new Date(order.created_at) >= monthStart ? total + Number(order.total_amount || 0) : total
+    ), 0);
+    const awaiting = orders.filter(order => ['new', 'confirmed'].includes(order.status)).length;
+    $('#metric-orders').textContent = orders.length.toLocaleString('en-US');
+    $('#metric-orders-note').textContent = `${awaiting} awaiting action · latest 100 orders`;
+    $('#metric-sales').textContent = money(monthlySales);
+    $('#metric-pending').textContent = awaiting.toLocaleString('en-US');
+
+    const statusCounts = ['new', 'confirmed', 'processing', 'shipped', 'completed', 'cancelled']
+      .map(status => ({ status, count: orders.filter(order => order.status === status).length }));
+    const maxStatusCount = Math.max(1, ...statusCounts.map(item => item.count));
+    $('#order-status-list').innerHTML = statusCounts.map(({ status, count }) => `
+      <div class="overview-status"><span>${escapeHtml(status[0].toUpperCase() + status.slice(1))}</span><b>${count}</b>
+        <span class="overview-status-track"><i style="width:${Math.round(count / maxStatusCount * 100)}%"></i></span>
+      </div>`).join('');
+
+    const days = [];
+    for (let offset = 6; offset >= 0; offset -= 1) {
+      const date = new Date(now);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - offset);
+      const key = dateKey(date);
+      days.push({
+        key,
+        label: date.toLocaleDateString(undefined, { weekday: 'short' }),
+        count: orders.filter(order => dateKey(new Date(order.created_at)) === key).length
+      });
+    }
+    const maxDailyOrders = Math.max(1, ...days.map(day => day.count));
+    $('#orders-chart').innerHTML = days.map((day, index) => `
+      <div class="chart-day ${index === days.length - 1 ? 'today' : ''}" aria-label="${escapeHtml(`${day.label}: ${day.count} orders`)}">
+        <div class="chart-track"><i class="chart-bar" style="height:${Math.max(4, Math.round(day.count / maxDailyOrders * 100))}%"></i></div>
+        <span>${escapeHtml(day.label)}</span>
+      </div>`).join('');
+    $('#overview-recent').innerHTML = orders.length
+      ? [...orders].slice(0, 5).map(order => `
+        <div class="overview-order"><span>${escapeHtml(order.customer_name || 'Customer')} · ${escapeHtml(order.id)}</span>
+          <small>${escapeHtml(new Date(order.created_at).toLocaleDateString())} · ${escapeHtml(order.status)}</small>
+          <b>${money(order.total_amount)}</b>
+        </div>`).join('')
+      : '<div class="overview-empty">No orders have been saved yet.</div>';
+  }
+
+  if (!productsLoaded) {
+    $('#metric-products').textContent = '…';
+    $('#metric-stock-note').textContent = 'Loading catalog…';
+  } else if (productsError) {
+    $('#metric-products').textContent = '—';
+    $('#metric-stock-note').textContent = 'Could not load catalog data';
+  } else {
+    const publishedProducts = products.filter(product => product.active);
+    const variants = products.flatMap(product => product.variants || []).filter(variant => variant.active);
+    const availableStock = variants.reduce((total, variant) => total + Number(variant.stock || 0), 0);
+    const lowStock = variants.filter(variant => Number(variant.stock || 0) > 0 && Number(variant.stock) <= 5).length;
+    $('#metric-products').textContent = publishedProducts.length.toLocaleString('en-US');
+    $('#metric-stock-note').textContent = `${availableStock.toLocaleString('en-US')} units · ${lowStock} low-stock variants`;
+  }
 }
 
 async function api(url, options = {}) {
@@ -51,14 +133,22 @@ function productCard(product) {
 
 async function loadProducts() {
   productList.innerHTML = '<div class="admin-empty">Loading products…</div>';
+  productsLoaded = false;
+  productsError = '';
+  renderOverview();
   try {
     const result = await api('/api/admin/products');
     products = result.products || [];
+    productsLoaded = true;
     productList.innerHTML = products.length
       ? products.map(productCard).join('')
       : '<div class="admin-empty">No products yet. Add your first product to start building the catalog.</div>';
   } catch (error) {
+    productsLoaded = true;
+    productsError = error.message;
     productList.innerHTML = `<div class="admin-empty">Products could not be loaded: ${escapeHtml(error.message)}</div>`;
+  } finally {
+    renderOverview();
   }
 }
 
@@ -273,15 +363,22 @@ function orderCard(order) {
 async function loadOrders() {
   ordersFeedback.textContent = '';
   orderList.innerHTML = '';
+  orders = null;
+  ordersError = '';
   $('#orders-count').textContent = 'Loading orders…';
+  renderOverview();
   try {
-    const { orders } = await api('/api/admin/orders');
+    const result = await api('/api/admin/orders');
+    orders = result.orders || [];
     $('#orders-count').textContent = `${orders.length} recent ${orders.length === 1 ? 'order' : 'orders'}`;
     orderList.innerHTML = orders.length ? orders.map(orderCard).join('') : '<div class="empty-orders">No orders have been saved yet.</div>';
   } catch (error) {
+    ordersError = error.message;
     $('#orders-count').textContent = 'Orders could not be loaded.';
     ordersFeedback.textContent = error.message;
     ordersFeedback.className = 'admin-feedback error';
+  } finally {
+    renderOverview();
   }
 }
 
@@ -305,36 +402,25 @@ async function loadSettings() {
   }
 }
 
-$('#orders-tab').addEventListener('click', () => {
-  $('#orders-tab').setAttribute('aria-selected', 'true');
-  $('#products-tab').setAttribute('aria-selected', 'false');
-  $('#settings-tab').setAttribute('aria-selected', 'false');
-  $('#orders-panel').hidden = false;
-  $('#products-panel').hidden = true;
-  $('#settings-panel').hidden = true;
-});
+function selectSection(section) {
+  const sections = ['overview', 'orders', 'products', 'settings'];
+  sections.forEach(name => {
+    $(`#${name}-tab`).setAttribute('aria-selected', String(name === section));
+    $(`#${name}-panel`).hidden = name !== section;
+  });
+  if (section === 'products') loadProducts();
+  if (section === 'settings') loadSettings();
+}
 
-$('#products-tab').addEventListener('click', () => {
-  $('#orders-tab').setAttribute('aria-selected', 'false');
-  $('#products-tab').setAttribute('aria-selected', 'true');
-  $('#settings-tab').setAttribute('aria-selected', 'false');
-  $('#orders-panel').hidden = true;
-  $('#products-panel').hidden = false;
-  $('#settings-panel').hidden = true;
-  loadProducts();
-});
-
-$('#settings-tab').addEventListener('click', () => {
-  $('#orders-tab').setAttribute('aria-selected', 'false');
-  $('#products-tab').setAttribute('aria-selected', 'false');
-  $('#settings-tab').setAttribute('aria-selected', 'true');
-  $('#orders-panel').hidden = true;
-  $('#products-panel').hidden = true;
-  $('#settings-panel').hidden = false;
-  loadSettings();
+['overview', 'orders', 'products', 'settings'].forEach(section => {
+  $(`#${section}-tab`).addEventListener('click', () => selectSection(section));
 });
 
 $('#refresh-orders').addEventListener('click', loadOrders);
+$('#overview-orders-link').addEventListener('click', () => {
+  selectSection('orders');
+  $('#orders-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 $('#new-product').addEventListener('click', createProduct);
 $('#cancel-product').addEventListener('click', resetProductEditor);
 $('#build-variants').addEventListener('click', () => buildVariantRows(collectVariants()));
@@ -520,6 +606,11 @@ orderList.addEventListener('change', async event => {
       method: 'PATCH',
       body: JSON.stringify({ id: select.dataset.orderId, status: select.value })
     });
+    if (orders) {
+      const order = orders.find(item => item.id === select.dataset.orderId);
+      if (order) order.status = select.value;
+      renderOverview();
+    }
     ordersFeedback.textContent = 'Order status updated.';
     ordersFeedback.className = 'admin-feedback success';
   } catch (error) {
@@ -563,4 +654,6 @@ $('#settings-form').addEventListener('submit', async event => {
   }
 });
 
+renderOverview();
 loadOrders();
+loadProducts();

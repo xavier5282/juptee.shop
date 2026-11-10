@@ -51,14 +51,29 @@ async function validAccessToken(token, env) {
   );
 }
 
+function adminLoginRedirect(url) {
+  const loginUrl = new URL('/login.html', url);
+  loginUrl.searchParams.set('returnTo', `${url.pathname}${url.search}`);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      'Cache-Control': 'no-store',
+      Location: loginUrl.toString()
+    }
+  });
+}
+
 export async function onRequest(context) {
   const url = new URL(context.request.url);
   if (!url.pathname.startsWith('/admin') && !url.pathname.startsWith('/api/admin/')) {
     return context.next();
   }
+  const isAdminDocument = ['GET', 'HEAD'].includes(context.request.method)
+    && ['/admin', '/admin/', '/admin/index.html'].includes(url.pathname);
 
   const token = context.request.headers.get('Cf-Access-Jwt-Assertion');
   if (!token) {
+    if (isAdminDocument) return adminLoginRedirect(url);
     return new Response('Administrator access required.', {
       status: 401,
       headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' }
@@ -76,6 +91,7 @@ export async function onRequest(context) {
     });
   }
   if (!valid) {
+    if (isAdminDocument) return adminLoginRedirect(url);
     return new Response('Administrator access required.', {
       status: 401,
       headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' }
