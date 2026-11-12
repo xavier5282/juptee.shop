@@ -4,6 +4,9 @@ compatibility_date = "2026-11-07"
 
 [vars]
 PUBLIC_SITE_URL = "https://juptee.shop"
+CF_ACCESS_TEAM_DOMAIN = "lingering-flower-a100.cloudflareaccess.com"
+CF_ACCESS_ADMIN_AUD = "e0631abf4f50365ecdf73051f82a0883baf7dc4145d5dbac046403e63b4cadf3"
+CF_ACCESS_API_AUD = "4b006a0e30c213c98516ac589ca812dd0406b6e058d1db097d2a02fa4856b3bc"
 
 [[d1_databases]]
 binding = "DB"
