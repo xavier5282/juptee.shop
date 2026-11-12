@@ -1,4 +1,5 @@
 import { parseChatQuery, searchProducts } from './chat-search.mjs';
+import { answerSmallTalk } from './chat-replies.mjs';
 
 const root = document.querySelector('#jt-chat-root');
 const brandImage = window.jupteeAssetUrl ? window.jupteeAssetUrl('/assets/juptee-favicon.png') : '/assets/juptee-favicon.png';
@@ -734,6 +735,11 @@ For a customized quotation, contact JUPTEE with the quantity and design you have
 }
 
 function answerKnownQuestion(message, language) {
+  const smallTalkReply = answerSmallTalk(message);
+  if (smallTalkReply) {
+    addMessage('assistant', smallTalkReply);
+    return true;
+  }
   const lower = message.toLowerCase();
   if (/(customi[sz](?:e|ation)|personalized|print my own|my own t-?shirt)/i.test(lower)) {
     const contact = state.settings?.supportPhone || '+8801061103327';
