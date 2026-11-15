@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://juptee.shop/</loc>
+    <loc>https://jupbd.shop/</loc>
+  </url>
+  <url>
+    <loc>https://jupbd.shop/products.html</loc>
+  </url>
+  <url>
+    <loc>https://jupbd.shop/about.html</loc>
   </url>
 </urlset>

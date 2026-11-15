@@ -1,44 +1,293 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>JUPTEE – Premium T-Shirts &amp; Hoodies in Bangladesh</title>
-<meta name="description" content="Explore JUPTEE T-shirts, hoodies and accessories. Browse the sample storefront and confirm product availability before ordering.">
-<meta name="robots" content="noindex,follow">
-<meta name="theme-color" content="#f8f7f4" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1d1e1b" media="(prefers-color-scheme: dark)">
-<link rel="canonical" href="https://juptee.shop/">
-<meta property="og:type" content="website">
-<meta property="og:locale" content="en_BD">
-<meta property="og:site_name" content="JUPTEE">
-<meta property="og:title" content="JUPTEE — T-Shirts, Hoodies &amp; Everyday Style">
-<meta property="og:description" content="Explore JUPTEE styles, check garment measurements, and discover the collection. Sample catalogue; confirm availability before ordering.">
-<meta property="og:url" content="https://juptee.shop/">
-<meta name="twitter:card" content="summary">
-<link rel="icon" type="image/png" sizes="64x64" href="assets/juptee-favicon.png">
-<link rel="apple-touch-icon" href="assets/juptee-favicon.png">
-<link rel="manifest" href="site.webmanifest">
-<script type="application/ld+json">
-{"@context":"https://schema.org","@type":"Organization","name":"JUPTEE","url":"https://juptee.shop/","sameAs":["https://www.facebook.com/juptshirts.uk"],"email":["hellojuptee@gmail.com","contact@jupbd.shop"],"telephone":"+8801061103327","areaServed":{"@type":"Country","name":"Bangladesh"},"logo":"https://juptee.shop/assets/juptee-favicon.png"}
-</script>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css"><link rel="stylesheet" href="chatbot.css"></head><body>
-<div class="bar" id="store-status">JUPTEE STORE SETUP · SAMPLE PRODUCTS &amp; PRICES · VERIFY AVAILABILITY BEFORE ORDERING</div>
-<header><div class="nav"><a class="logo" href="#home">JUPTEE</a>
-<nav id="nav"><a href="#home">Home</a><a href="#shop">Shop</a><a href="#shop-new">New arrivals</a><a href="#shop-tshirt">T-Shirts</a><a href="#shop-hoodies">Hoodies</a><a href="#about">Our story</a></nav>
-<form class="nav-search" role="search" onsubmit="searchProducts(event)"><input id="site-search" type="search" placeholder="Search styles..." aria-label="Search products"><button type="submit" aria-label="Submit search">⌕</button></form>
-<a class="wishlist-link" href="#wishlist" aria-label="Wishlist">♡ <span id="wc">0</span></a>
-<a class="cartbtn" href="#cart" id="cc">Bag (0)</a></div></header>
-<main id="app"></main>
-<footer class="site-footer"><div class="footer-inner">
-<div class="footer-topline"><span>MADE FOR YOUR EVERYDAY.</span><a href="#home">BACK TO TOP <b aria-hidden="true">↑</b></a></div>
-<div class="footer-main">
-<div class="footer-brand"><a class="footer-logo" href="#home">JUPTEE<span>®</span></a><p>Everyday pieces, easy fits.<br>A little more you in everything you wear.</p><div class="footer-preview"><span aria-hidden="true">✳</span> <span id="footer-store-status">Store setup in progress · sample catalogue</span></div></div>
-<div class="footer-column"><b>Explore</b><a href="#shop">Shop all</a><a href="#shop-new">New arrivals</a><a href="#shop-tshirt">T-shirts</a><a href="#shop-hoodies">Hoodies</a><a href="#shop-accessories">Accessories</a></div>
-<div class="footer-column"><b>Here to help</b><a href="#p-faq">Frequently asked questions</a><a href="#p-size">Size guide</a><a href="#p-shipping">Shipping &amp; delivery</a><a href="#p-returns">Returns &amp; exchange</a><a href="#p-contact">Contact JUPTEE</a></div>
-<div class="footer-column footer-contact"><b>Say hello</b><a href="tel:+8801061103327">+8801061103327</a><a href="mailto:hellojuptee@gmail.com">hellojuptee@gmail.com</a><a href="mailto:contact@jupbd.shop">contact@jupbd.shop</a><a href="https://www.facebook.com/juptshirts.uk" target="_blank" rel="noopener noreferrer">Follow JUPTEE on Facebook ↗</a><span>Delivery partner</span><strong>StatedFats Courier</strong></div>
-</div>
-<div class="footer-bottom"><span>© JUPTEE (JUPTEE Design &amp; Style).</span><div><a href="#p-privacy">Privacy</a><a href="#p-terms">Terms</a><a href="#about">Our story</a></div><span class="footer-location">Designed for everyday · Bangladesh</span></div>
-</div></footer>
-<div id="toast" role="status" aria-live="polite"></div>
-<div id="jt-chat-root" class="jt-chat-root"><button class="jt-chat-launch" type="button" aria-label="Open JUPTEE shopping assistant, new message" aria-expanded="false">✦<span class="jt-chat-unread">1</span></button></div>
-<script src="location-selector.js"></script><script src="app.js"></script><script src="chatbot-loader.js" defer></script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JUPTEE | Premium Fashion for Everyday Life</title>
+    <meta name="description" content="Discover premium JUPTEE T-shirts, hoodies, and drop shoulder styles designed for comfortable everyday wear in Bangladesh." />
+    <meta name="theme-color" content="#f8f7f4" />
+    <link rel="icon" type="image/png" href="./assets/juptee-favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./assets/css/storefront.css" />
+  </head>
+  <body>
+    <div class="topbar">JUPTEE • Premium everyday style • Bangladesh</div>
+
+    <header class="site-header">
+      <div class="container navbar">
+        <a href="./index.html" class="brand"><img src="./assets/images/logo_icon/juptee_logo%20(dark).png" alt="JUPTEE" /></a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="./index.html" class="is-active">Home</a>
+          <a href="./products.html">Shop</a>
+          <a href="./products.html?category=T-shirts">T-shirts</a>
+          <a href="./products.html?category=Hoodies">Hoodies</a>
+          <a href="./products.html?category=Drop%20Shoulder">Drop Shoulder</a>
+          <a href="./about.html">About JUPTEE</a>
+        </nav>
+        <div class="header-actions">
+          <a href="./products.html" class="cta-button">Shop now</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <span class="eyebrow">Made for everyday wear</span>
+            <h1>Premium essentials. Relaxed fits. Elevated basics.</h1>
+            <p>Built for daily comfort, clean silhouettes, and the kind of pieces you reach for again and again.</p>
+            <div class="hero-actions">
+              <a href="./products.html" class="cta-button">Shop the collection</a>
+              <a href="./products.html?category=Hoodies" class="secondary-button">Explore hoodies</a>
+            </div>
+          </div>
+
+          <div class="hero-panel" aria-label="Featured JUPTEE style">
+            <img src="./assets/products/slider-1.png" alt="JUPTEE fashion campaign" loading="eager" />
+            <div class="hero-overlay">
+              <strong>New season</strong>
+              <span>Clean layers. Street-ready fits.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section christmas-section" id="christmas-edit" aria-labelledby="christmas-title">
+        <div class="container">
+          <div class="christmas-panel">
+            <div class="christmas-copy">
+              <span class="eyebrow">Seasonal collection</span>
+              <h2 id="christmas-title">The Christmas Edit</h2>
+              <p>Bring a little festive color to the season with JUPTEE Christmas T-shirts. Message us to ask about the collection.</p>
+              <a class="cta-button" href="https://wa.me/8801601103327?text=Hello%20JUPTEE%2C%20I%20would%20like%20to%20know%20about%20the%20Christmas%20T-shirt%20collection.">Ask about Christmas tees <span aria-hidden="true">↗</span></a>
+            </div>
+            <div class="christmas-gallery" aria-label="JUPTEE Christmas T-shirt collection">
+              <img src="./assets/images/christmas/christmas_t-shirts%20(1).jpg" alt="A festive collection of red, black, and green Christmas T-shirts" loading="lazy" />
+              <img src="./assets/images/christmas/christmas_t-shirts%20(2).jpg" alt="Red Christmas T-shirt with snowflake and reindeer prints" loading="lazy" />
+              <img src="./assets/images/christmas/christmas_t-shirts%20(3).jpg" alt="Red and black Christmas T-shirts displayed outdoors" loading="lazy" />
+              <img src="./assets/images/christmas/christmas_t-shirts%20(4).jpg" alt="Green and black Christmas T-shirts with festive prints" loading="lazy" />
+              <img src="./assets/images/christmas/christmas_t-shirts%20(5).jpg" alt="Red Santa-print Christmas T-shirt" loading="lazy" />
+              <img src="./assets/images/christmas/christmas_t-shirts%20(6).jpg" alt="Black T-shirt with a colorful Merry Christmas design" loading="lazy" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Browse by style</span>
+              <h2>Shop the essentials</h2>
+            </div>
+            <a class="link-arrow" href="./products.html">View all →</a>
+          </div>
+
+          <div class="category-grid">
+            <a href="./products.html?category=T-shirts" class="category-card">
+              <div class="meta"><span>01 / Style</span><span>Best sellers</span></div>
+              <strong>T-shirts</strong>
+              <div class="arrow">→</div>
+            </a>
+            <a href="./products.html?category=Drop%20Shoulder" class="category-card">
+              <div class="meta"><span>02 / Statement</span><span>Relaxed fit</span></div>
+              <strong>Drop Shoulder</strong>
+              <div class="arrow">→</div>
+            </a>
+            <a href="./products.html?category=Hoodies" class="category-card">
+              <div class="meta"><span>03 / New collection</span><span>Printed layers</span></div>
+              <strong>Hoodies</strong>
+              <div class="arrow">→</div>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Featured pieces</span>
+              <h2>Customer favorites</h2>
+            </div>
+            <a class="link-arrow" href="./products.html">Shop all →</a>
+          </div>
+          <div class="product-grid" id="featured-products"></div>
+          <div class="christmas-favorites">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">Seasonal favorites</span>
+                <h2>Christmas T-shirts</h2>
+              </div>
+              <a class="link-arrow" href="#christmas-edit">View the Christmas edit →</a>
+            </div>
+            <div class="christmas-gallery" role="group" aria-label="Featured Christmas T-shirts">
+              <img src="./assets/images/christmas/christmas_t-shirts%20(2).jpg" alt="Red Christmas T-shirt with snowflake and reindeer prints" loading="lazy" decoding="async" />
+              <img src="./assets/images/christmas/christmas_t-shirts%20(4).jpg" alt="Green and black Christmas T-shirts with festive prints" loading="lazy" decoding="async" />
+              <img src="./assets/images/christmas/christmas_t-shirts%20(6).jpg" alt="Black T-shirt with a colorful Merry Christmas design" loading="lazy" decoding="async" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">New arrivals</span>
+              <h2>Latest collection</h2>
+            </div>
+            <a class="link-arrow" href="./products.html">See more →</a>
+          </div>
+          <div class="product-grid" id="latest-products"></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Why JUPTEE</span>
+              <h2>Designed for everyday confidence</h2>
+            </div>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card">
+              <div class="icon">01</div>
+              <h3>Premium fabrics</h3>
+              <p>Soft-touch cotton blends and durable finishes that feel as good as they look.</p>
+            </article>
+            <article class="feature-card">
+              <div class="icon">02</div>
+              <h3>Modern fits</h3>
+              <p>Tailored silhouettes with everyday versatility for campus, work, and city wear.</p>
+            </article>
+            <article class="feature-card">
+              <div class="icon">03</div>
+              <h3>Bangladesh delivery</h3>
+              <p>Reliable delivery and local customer support across Bangladesh.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section promotion-section" id="promotions" hidden>
+        <div class="container">
+          <div class="promo-banner">
+            <div class="promotion-copy">
+              <span class="eyebrow">JUPTEE / SPECIAL PRICES</span>
+              <h2 id="promotion-title">Good style.<br /><span>Better prices.</span></h2>
+              <p>Explore current offers across the collection. Pick a style and order directly on WhatsApp.</p>
+              <div class="promotion-actions">
+                <a href="#promotion-products" class="cta-button">Shop the offers <span aria-hidden="true">→</span></a>
+                <span class="promotion-savings">Save up to <strong id="promotion-savings">—</strong></span>
+              </div>
+            </div>
+            <div class="promotion-art">
+              <img src="./assets/images/tshirts/slider-1.png" alt="JUPTEE collection campaign" loading="lazy" />
+              <div class="promotion-art-caption">
+                <span>THE JUPTEE EDIT</span>
+                <strong>Find your new favorite.</strong>
+              </div>
+              <span class="promotion-stamp" aria-label="Savings on selected products">
+                <span>SAVE UP TO</span>
+                <strong id="promotion-stamp">—</strong>
+              </span>
+            </div>
+          </div>
+          <div class="section-heading promotion-heading">
+            <div>
+              <span class="eyebrow">Selected styles</span>
+              <h2>Shop current offers</h2>
+            </div>
+            <a class="link-arrow" href="./products.html">View all products →</a>
+          </div>
+          <div class="product-grid promotion-grid" id="promotion-products" aria-label="Products on offer"></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">The JUPTEE story</span>
+              <h2>Wear what feels like you</h2>
+            </div>
+          </div>
+          <div class="info-grid">
+            <article class="info-card">
+              <div class="icon">✦</div>
+              <h3>Everyday essentials</h3>
+              <p>Built for workdays, weekends, and the little moments in between.</p>
+            </article>
+            <article class="info-card">
+              <div class="icon">◎</div>
+              <h3>Premium finishing</h3>
+              <p>Minimal details, elevated shapes, and quality that lasts through repeated wear.</p>
+            </article>
+            <article class="info-card">
+              <div class="icon">↗</div>
+              <h3>Built for Bangladesh</h3>
+              <p>Made to fit local tastes, lifestyles, and the pace of everyday city wear.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container newsletter-grid">
+          <div class="newsletter-card">
+            <span class="eyebrow">The JUPTEE edit</span>
+            <h2 style="margin: 10px 0 12px; font-size: clamp(2rem, 3vw, 3rem); letter-spacing:-0.05em;">Everyday pieces, easy fits.</h2>
+            <p>Explore comfortable essentials designed for your everyday wardrobe.</p>
+            <a href="./products.html" class="cta-button" style="margin-top: 18px;">Shop the collection</a>
+          </div>
+          <div class="social-card" style="background:#fff;">
+            <span class="eyebrow">Need help choosing?</span>
+            <h3>Talk to JUPTEE</h3>
+            <p>Message us on WhatsApp for product and order questions.</p>
+            <a href="https://wa.me/8801601103327" class="secondary-button" style="margin-top: 18px;">Chat on WhatsApp</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <img class="footer-logo" src="./assets/images/logo_icon/juptee_logo%20(dark).png" alt="JUPTEE" />
+          <p>Premium basics for everyday confidence, made for easy wear and modern silhouettes.</p>
+        </div>
+        <div class="footer-links">
+          <strong>Shop</strong>
+          <a href="./products.html">All products</a>
+          <a href="./products.html?category=T-shirts">T-shirts</a>
+          <a href="./products.html?category=Hoodies">Hoodies</a>
+          <a href="./products.html?category=Drop%20Shoulder">Drop Shoulder</a>
+        </div>
+        <div class="footer-links">
+          <strong>Follow</strong>
+          <a href="./about.html">About JUPTEE</a>
+          <a href="https://www.facebook.com/juptshirts.uk" target="_blank" rel="noopener noreferrer">Facebook</a>
+          <a href="https://wa.me/8801601103327">WhatsApp</a>
+        </div>
+        <div class="footer-links">
+          <strong>Contact</strong>
+          <a href="tel:+8801601103327">+880 1601103327</a>
+          <a href="mailto:hellojuptee@gmail.com">hellojuptee@gmail.com</a>
+          <a href="https://www.facebook.com/juptshirts.uk" target="_blank" rel="noopener noreferrer">Facebook</a>
+          <span>Delivery across Bangladesh</span>
+        </div>
+      </div>
+      <div class="container footer-bottom">
+        <span>© 2026 JUPTEE</span>
+        <span>Designed for everyday ease.</span>
+      </div>
+    </footer>
+
+    <script src="./assets/js/storefront.js"></script>
+  </body>
+</html>
