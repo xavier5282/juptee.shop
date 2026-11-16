@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://juptee.shop/sitemap.xml
+Sitemap: https://jupbd.shop/sitemap.xml

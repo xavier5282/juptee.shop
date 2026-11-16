@@ -1,7 +1,7 @@
 {
   "name": "JUPTEE",
   "short_name": "JUPTEE",
-  "description": "Explore JUPTEE T-shirts, hoodies and accessories.",
+  "description": "Explore JUPTEE T-shirts, hoodies, and drop shoulder styles.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
