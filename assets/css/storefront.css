@@ -285,7 +285,7 @@ button { cursor: pointer; }
   display: grid;
   gap: 20px;
 }
-.category-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.category-grid { grid-template-columns: repeat(4, minmax(0,1fr)); }
 .category-card {
   position: relative;
   display: block;
@@ -298,6 +298,7 @@ button { cursor: pointer; }
 .category-card:nth-child(1) { background: linear-gradient(180deg, #f9f2eb, #f3efe8); }
 .category-card:nth-child(2) { background: linear-gradient(180deg, #edf2ec, #eef3eb); }
 .category-card:nth-child(3) { background: linear-gradient(180deg, #f0ece5, #efe7df); }
+.category-card:nth-child(4) { background: linear-gradient(180deg, #e5ecf0, #e2dfef); }
 .category-card .meta {
   display: flex;
   align-items: center;
